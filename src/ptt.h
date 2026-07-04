@@ -42,6 +42,7 @@ static void ptt_task(void *arg)
     {
         xSemaphoreTake(ptt_sem, portMAX_DELAY);
 
+        
         while (1)
         {
             bool pressed = gpio_get_level(PTT_GPIO) == 0;
