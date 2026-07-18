@@ -2,6 +2,7 @@
 #define PTT_H
 
 #include <stdbool.h>
+#include <stdatomic.h>
 #include "driver/gpio.h"
 #include "esp_err.h"
 #include "esp_check.h"
@@ -43,7 +44,7 @@
  */
 
 static SemaphoreHandle_t ptt_sem;
-static volatile bool ptt_transmitting = false;
+static atomic_uchar ptt_transmitting = 0;
 
 static void IRAM_ATTR ptt_gpio_isr(void *arg)
 {
@@ -60,6 +61,11 @@ static void IRAM_ATTR ptt_gpio_isr(void *arg)
                               // portYIELD_FROM_ISR() każe freeRTOS'owi aby nie wracał do przerwane zadania
                               // tylko aby skoczył od razu do tego nowego (właśnie odblokowanego Semaforem)
     }
+}
+
+static void ptt_force_stop(void)
+{
+    atomic_store(&ptt_transmitting, 0);
 }
 
 static void ptt_task(void *arg)
@@ -97,7 +103,7 @@ static void ptt_task(void *arg)
             }
             else if (click_armed)
             {
-                ptt_transmitting = !ptt_transmitting;
+                atomic_fetch_xor(&ptt_transmitting, 1);
                 click_armed = false;
             }
 
@@ -141,7 +147,7 @@ static esp_err_t ptt_init(void)
 
 static bool ptt_is_transmitting(void)
 {
-    return ptt_transmitting;
+    return atomic_load(&ptt_transmitting) != 0;
 }
 
 #endif

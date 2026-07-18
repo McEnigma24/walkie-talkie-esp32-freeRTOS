@@ -13,7 +13,7 @@
 #define I2S_BCLK  26   // BCLK  → pin "26"
 #define I2S_DOUT  27   // DIN   → pin "27"
 
-#define SAMPLE_RATE     16000
+#define SAMPLE_RATE     16'000
 #define TONE_HZ         440
 #define AMPLITUDE       6000
 #define BUFFER_SAMPLES  256
@@ -38,33 +38,16 @@ static int16_t speaker_scale_sample(int16_t sample)
     return (int16_t)scaled;
 }
 
-static esp_err_t speaker_stop(void)
-{
-    int16_t silence[BUFFER_SAMPLES * 2] = {0};
-    size_t bytes_written = 0;
-
-    for (int i = 0; i < SILENCE_FLUSH_BUFFERS; i++)
-    {
-        ESP_RETURN_ON_ERROR(
-            i2s_channel_write(
-                tx_handle,
-                silence,
-                sizeof(silence),
-                &bytes_written,
-                portMAX_DELAY
-            ),
-            "I2S",
-            "flush"
-        );
-    }
-
-    return i2s_channel_disable(tx_handle);
-}
-
 static esp_err_t speaker_init(void)
 {
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
+    chan_cfg.dma_desc_num = 8;      // wiecej buforow = wiekszy zapas, ale wieksza latencja
+    chan_cfg.dma_frame_num = 256;   // wiekszy bufor = mniej wybudzen, ale wieksza latencja
+    chan_cfg.auto_clear = true;     // przy underrunie graj cisze zamiast powtarzac ostatni bufor
+
     ESP_RETURN_ON_ERROR(i2s_new_channel(&chan_cfg, &tx_handle, NULL), "I2S", "new channel");
+
+
 
     i2s_std_config_t std_cfg = {
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(SAMPLE_RATE),
@@ -91,50 +74,38 @@ static esp_err_t speaker_init(void)
     return ESP_OK;
 }
 
-static esp_err_t speaker_play(const int16_t *mono, size_t buffer_bytes)
+static esp_err_t speaker_stream_begin(void)
 {
-    ESP_RETURN_ON_ERROR(i2s_channel_enable(tx_handle), "I2S", "enable");
+    return i2s_channel_enable(tx_handle);
+}
 
-    const size_t num_samples = buffer_bytes / sizeof(int16_t);
-    int16_t stereo_buf[BUFFER_SAMPLES * 2];
+static esp_err_t speaker_fill_buffers_with_zeros(void)
+{
+    int16_t silence[BUFFER_SAMPLES * 2] = {0};
+    size_t bytes_written = 0;
 
-    for (size_t offset = 0; offset < num_samples; )
+    for (int i = 0; i < SILENCE_FLUSH_BUFFERS; i++)
     {
-        size_t chunk = num_samples - offset;
-        if (chunk > BUFFER_SAMPLES)
-        {
-            chunk = BUFFER_SAMPLES;
-        }
-
-        for (size_t i = 0; i < chunk; i++)
-        {
-            int16_t sample = speaker_scale_sample(mono[offset + i]);
-            stereo_buf[i * 2]     = sample;
-            stereo_buf[i * 2 + 1] = sample;
-        }
-
-        size_t bytes_written = 0;
         ESP_RETURN_ON_ERROR(
             i2s_channel_write(
                 tx_handle,
-                stereo_buf,
-                chunk * sizeof(int16_t) * 2,
+                silence,
+                sizeof(silence),
                 &bytes_written,
                 portMAX_DELAY
             ),
             "I2S",
-            "play"
+            "flush"
         );
-
-        offset += chunk;
     }
 
-    return speaker_stop();
+    return ESP_OK;
 }
 
-static esp_err_t speaker_stream_begin(void)
+static esp_err_t speaker_stream_end(void)
 {
-    return i2s_channel_enable(tx_handle);
+    ESP_RETURN_ON_ERROR(speaker_fill_buffers_with_zeros(), "I2S", "disable");
+    return i2s_channel_disable(tx_handle);
 }
 
 static esp_err_t speaker_stream_write(const int16_t *mono, size_t num_samples)
@@ -175,13 +146,61 @@ static esp_err_t speaker_stream_write(const int16_t *mono, size_t num_samples)
     return ESP_OK;
 }
 
-static esp_err_t speaker_stream_end(void)
+static esp_err_t speaker_play(const int16_t *mono, size_t buffer_bytes)
 {
-    return speaker_stop();
+    ESP_RETURN_ON_ERROR(speaker_stream_begin(), "I2S", "enable");
+
+    const size_t num_samples = buffer_bytes / sizeof(int16_t);
+    int16_t stereo_buf[BUFFER_SAMPLES * 2];
+
+    for (size_t offset = 0; offset < num_samples; )
+    {
+        size_t chunk = num_samples - offset;
+        if (chunk > BUFFER_SAMPLES)
+        {
+            chunk = BUFFER_SAMPLES;
+        }
+
+        for (size_t i = 0; i < chunk; i++)
+        {
+            int16_t sample = speaker_scale_sample(mono[offset + i]);
+            stereo_buf[i * 2]     = sample;
+            stereo_buf[i * 2 + 1] = sample;
+        }
+
+        size_t bytes_written = 0;
+        ESP_RETURN_ON_ERROR(
+            i2s_channel_write(
+                tx_handle,
+                stereo_buf,
+                chunk * sizeof(int16_t) * 2,
+                &bytes_written,
+                portMAX_DELAY
+            ),
+            "I2S",
+            "play"
+        );
+
+        offset += chunk;
+    }
+
+    return speaker_stream_end();
 }
+
+
+
+
+
+
+
+
+
+
 
 static void play_tone(void)
 {
+    ESP_ERROR_CHECK(speaker_stream_begin());
+
     int16_t buf[BUFFER_SAMPLES * 2];
     static float phase = 0.0f;
     const float phase_step = 2.0f * (float)M_PI * TONE_HZ / SAMPLE_RATE;
@@ -207,6 +226,8 @@ static void play_tone(void)
         &bytes_written,
         portMAX_DELAY
     );
+
+    ESP_ERROR_CHECK(speaker_stream_end());
 }
 
 #endif

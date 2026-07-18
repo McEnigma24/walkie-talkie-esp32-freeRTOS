@@ -109,17 +109,13 @@ static esp_err_t mic_record(int16_t *buffer, size_t buffer_bytes, uint32_t durat
 
 static esp_err_t mic_read_samples(int16_t *buffer, size_t num_samples)
 {
-    const int64_t period_us = 1000000 / SAMPLE_RATE;
+    const int64_t period_us = 1'000'000 / SAMPLE_RATE;
     int64_t next_us = esp_timer_get_time();
 
     for (size_t i = 0; i < num_samples; i++)
     {
         int raw = 0;
-        ESP_RETURN_ON_ERROR(
-            adc_oneshot_read(mic_adc_handle, MIC_ADC_CHANNEL, &raw),
-            "MIC",
-            "stream read"
-        );
+        ESP_RETURN_ON_ERROR( mic_read_raw(&raw), "MIC", "stream read");
 
         mic_baseline = mic_baseline * 0.995f + (float)raw * 0.005f;
         int delta = raw - (int)mic_baseline;

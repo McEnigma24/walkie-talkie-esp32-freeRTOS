@@ -1,21 +1,5 @@
-Sending data - 0Sending data - 1Sending data - 1W (65957) NRF24: Maximum number of TX retries interrupt
-Sending data - 0W (65987) NRF24: Maximum number of TX retries interrupt
-Sending data - 0Sending data - 1W (66047) NRF24: Maximum number of TX retries interrupt
-Sending data - 0W (66077) NRF24: Maximum number of TX retries interrupt
-Sending data - 0Sending data - 1W (66137) NRF24: Maximum number of TX retries interrupt
-Sending data - 0W (66167) NRF24: Maximum number of TX retries interrupt
-Sending data - 0Sending data - 1W (66227) NRF24: Maximum number of TX retries interrupt
-Sending data - 0W (66257) NRF24: Maximum number of TX retries interrupt
-Sending data - 0W (66287) NRF24: Maximum number of TX retries interrupt
-Sending data - 0Sending data - 1Sending data - 1W (66377) NRF24: Maximum number of TX retries interrupt
-Sending data - 0Sending data - 1W (66437) NRF24: Maximum number of TX retries interrupt
-Sending data - 0W (66467) NRF24: Maximum number of TX retries interrupt
-Sending data - 0Sending data - 1W (66527) NRF24: Maximum number of TX retries interrupt
-Sending data - 0W (66557) NRF24: Maximum number of TX retries interrupt
-Sending data - 0W (66587) NRF24: Maximum number of TX retries interrupt
-Sending data - 0Sending data - 1Sending data - 1W (66677) NRF24: Maximum number of TX retries interrupt
-Sending data - 0Sending data - 1W (66737) NRF24: Maximum number of TX retries interrupt
-Sending data - 0W (66767) NRF24: Maximum number of TX retries interrupt
-Sending data - 0Sending data - 1W (66857) NRF24: Maximum number of TX retries interrupt
-Sending data - 0W (66887) NRF24: Maximum number of TX retries interrupt
-Sending data - 0Sending data - 1W (66987) NRF24: Maximum number of TX retries interrupt
+Compiling .pio\build\esp32dev\src\main.c.o
+src/main.c:51:20: error: variably modified 'MIC_BUFFER' at file scope
+   51 |     static int16_t MIC_BUFFER[MIC_BUFFER_SIZE]; // 10kB * sizeof(int_16)<2>  ==  20kB
+      |                    ^~~~~~~~~~
+*** [.pio\build\esp32dev\src\main.c.o] Error 1
