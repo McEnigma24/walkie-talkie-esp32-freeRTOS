@@ -41,8 +41,12 @@ static void run_transmit_mode(gpio_output_t *blinker)
 
 
 
-#define TRANSMITTER
-// #define RECEIVER
+
+
+// #define TRANSMITTER
+#define RECEIVER
+
+
 
 void app_main(void)
 {
@@ -60,7 +64,7 @@ void app_main(void)
     // nRF //
         NRF24_t dev;
         Nrf24_init(&dev);                                  // zwraca void
-        // Nrf24_enableNoAckFeature(&dev);
+        Nrf24_enableNoAckFeature(&dev);
         const uint8_t payload_length = 32;
         const uint8_t rf_channel = 90;                     // CONFIG_RADIO_CHANNEL
         Nrf24_config(&dev, rf_channel, payload_length);    // zwraca void
@@ -77,14 +81,17 @@ void app_main(void)
             if (ptt_is_transmitting())
             {
                 // TX:
-                memset(buf, 0xda, sizeof(buf));
+                for(int i=0; i<32; i++)
+                {
+                    buf[i] = i;
+                }
 
                 // Nrf24_send(&dev, buf);
                 Nrf24_sendNoAck(&dev, buf);
 
                 bool status = Nrf24_isSend(&dev, 1000);
 
-                printf("Sending data - %d", status);
+                printf("Sending data - %d \n", status);
                 vTaskDelay(pdMS_TO_TICKS(20));
             }
         }
@@ -99,7 +106,17 @@ void app_main(void)
 
                 gpio_output_blink(&blinker, 1, 50, 50);
 
-                printf("Payload data [0]:0x%02x [1]:0x%02x [2]:0x%02x [3]:0x%02x \n", buf[0], buf[1], buf[2], buf[3]);
+                printf("\n");
+                for(int i=0; i<32; i++)
+                {
+                    if((i % 4) == 0) printf("Payload data ");
+
+                    char sting_bufor[12];
+                    snprintf(sting_bufor, sizeof(sting_bufor), "%d", i);
+                    printf(" [%s]:0x%02x,", sting_bufor, buf[i]);
+
+                    if((i % 4) == 3) printf("\n");
+                }
             }
         }
         #endif
