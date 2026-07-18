@@ -52,7 +52,7 @@ void app_main(void)
     gpio_output_blink(&blinker, 3, 100, 50);
 
 
-    
+
     // #define TRANSMITTER
     #define RECEIVER
 
@@ -94,7 +94,7 @@ void app_main(void)
             {
                 Nrf24_getData(&dev, buf);
 
-                gpio_output_blink(&blinker, 1);
+                gpio_output_blink(&blinker, 1, 50, 50);
 
                 printf("Payload data [0]:0x%02x [1]:0x%02x [2]:0x%02x [3]:0x%02x \n", buf[0], buf[1], buf[2], buf[3]);
             }
