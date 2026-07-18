@@ -14,6 +14,34 @@
 #define PTT_GPIO            16
 #define PTT_DEBOUNCE_MS     50
 
+/*
+ * ptt.h — obsluga przycisku PTT (Push-To-Talk) dla ESP32 / ESP-IDF
+ *
+ * PODLACZENIE SPRZETOWE:
+ *   - Przycisk laczy sie miedzy GPIO16 a GND (NIE do VCC).
+ *   - Jedna nozka -> GPIO16, druga nozka -> GND.
+ *   - Nie jest potrzebny zewnetrzny rezystor: uzywamy wewnetrznego
+ *     pull-upa (GPIO_PULLUP_ENABLE).
+ *
+ * ZASADA DZIALANIA (logika active-low):
+ *   - Przycisk ZWOLNIONY: pull-up trzyma GPIO16 w stanie WYSOKIM (1).
+ *   - Przycisk WCISNIETY: GPIO16 zwarte do GND -> stan NISKI (0).
+ *   - Dlatego w kodzie: pressed = (gpio_get_level(PTT_GPIO) == 0).
+ *
+ * PRZERWANIA I DEBOUNCE:
+ *   - GPIO_INTR_ANYEDGE budzi zadanie przy kazdej zmianie stanu.
+ *   - ISR oddaje semafor, ktory wybudza ptt_task.
+ *   - Stan musi byc stabilny przez PTT_DEBOUNCE_MS (50 ms), aby
+ *     odfiltrowac drgania stykow.
+ *
+ * TOGGLE:
+ *   - Nadawanie przelacza sie przy PUSZCZENIU przycisku (jeden klik
+ *     = zmiana ptt_transmitting na przeciwny stan).
+ *   - Stan odczytujesz przez ptt_is_transmitting().
+ *
+ * UWAGA: GPIO17 pozostaje wolny (zarezerwowany pod NRF24 CE).
+ */
+
 static SemaphoreHandle_t ptt_sem;
 static volatile bool ptt_transmitting = false;
 
@@ -27,7 +55,10 @@ static void IRAM_ATTR ptt_gpio_isr(void *arg)
     }
     if (wake == pdTRUE)
     {
-        portYIELD_FROM_ISR();
+        portYIELD_FROM_ISR(); // ten ISR przerwał jakieś zadanie -> teraz pdTRUE oznacza, że semafor odblokował
+                              // jakieś zadanie o wyższym priorytecie niż task, który został przerwany tym ISR
+                              // portYIELD_FROM_ISR() każe freeRTOS'owi aby nie wracał do przerwane zadania
+                              // tylko aby skoczył od razu do tego nowego (właśnie odblokowanego Semaforem)
     }
 }
 
@@ -42,10 +73,10 @@ static void ptt_task(void *arg)
     {
         xSemaphoreTake(ptt_sem, portMAX_DELAY);
 
-        
+
         while (1)
         {
-            bool pressed = gpio_get_level(PTT_GPIO) == 0;
+            bool pressed = ( gpio_get_level(PTT_GPIO) == 0 );
             TickType_t now = xTaskGetTickCount();
 
             if (pressed != prev_pressed)
