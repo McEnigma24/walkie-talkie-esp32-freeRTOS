@@ -35,4 +35,18 @@ static void gpio_output_toggle(gpio_output_t *wrapper)
     gpio_set_level(wrapper->pin, wrapper->state);
 }
 
+static void gpio_output_blink(gpio_output_t *wrapper, uint32_t n = 1, uint32_t time_on_ms = 25, uint32_t time_off_ms = -1)
+{
+    if(time_off_ms == ((uint32_t)-1))
+        time_off_ms = time_on_ms;
+
+    for (uint32_t i = 0; i < n; i++)
+    {
+        gpio_output_set(wrapper, true);
+        vTaskDelay(pdMS_TO_TICKS(time_on_ms));
+        gpio_output_set(wrapper, false);
+        vTaskDelay(pdMS_TO_TICKS(time_off_ms));
+    }
+}
+
 #endif

@@ -710,21 +710,13 @@ CONFIG_PARTITION_TABLE_MD5=y
 #
 # default:
 CONFIG_GPIO_RANGE_MAX=33
-# default:
 CONFIG_RADIO_CHANNEL=90
-# default:
 CONFIG_MISO_GPIO=19
-# default:
 CONFIG_SCLK_GPIO=18
-# default:
 CONFIG_MOSI_GPIO=23
-# default:
-CONFIG_CE_GPIO=16
-# default:
-CONFIG_CSN_GPIO=17
-# default:
+CONFIG_CE_GPIO=17
+CONFIG_CSN_GPIO=5
 CONFIG_SPI2_HOST=y
-# default:
 # CONFIG_SPI3_HOST is not set
 # default:
 # CONFIG_ADVANCED is not set

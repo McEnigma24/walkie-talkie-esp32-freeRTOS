@@ -1,0 +1,8 @@
+# nRF24L01 (mirf) pin configuration - see external/esp-idf-mirf Kconfig.projbuild
+CONFIG_RADIO_CHANNEL=90
+CONFIG_MISO_GPIO=19
+CONFIG_SCLK_GPIO=18
+CONFIG_MOSI_GPIO=23
+CONFIG_CE_GPIO=17
+CONFIG_CSN_GPIO=5
+CONFIG_SPI2_HOST=y
