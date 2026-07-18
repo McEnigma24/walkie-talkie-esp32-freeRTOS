@@ -39,35 +39,36 @@ static void run_transmit_mode(gpio_output_t *blinker)
     } \
 }
 
+
+
+#define TRANSMITTER
+// #define RECEIVER
+
 void app_main(void)
 {
     printf("Walkie-talkie %d Hz - PTT na GPIO%d\n", SAMPLE_RATE, PTT_GPIO);
 
     gpio_output_t blinker = gpio_output_init(BLINK_GPIO, true);
+    gpio_output_blink(&blinker, 3, 500, 500);
 
-    ESP_ERROR_CHECK(mic_init());
-    ESP_ERROR_CHECK(speaker_init());
-    ESP_ERROR_CHECK(ptt_init());
+    #ifdef TRANSMITTER
+        ESP_ERROR_CHECK(mic_init());
+        ESP_ERROR_CHECK(speaker_init());
+        ESP_ERROR_CHECK(ptt_init());
+    #endif
 
-    gpio_output_blink(&blinker, 3, 100, 50);
+    // nRF //
+        NRF24_t dev;
+        Nrf24_init(&dev);                                  // zwraca void
+        // Nrf24_enableNoAckFeature(&dev);
+        const uint8_t payload_length = 32;
+        const uint8_t rf_channel = 90;                     // CONFIG_RADIO_CHANNEL
+        Nrf24_config(&dev, rf_channel, payload_length);    // zwraca void
+        nRF_CHECK_ERR(Nrf24_setTADDR(&dev, (uint8_t*)"WALK1"));
+        nRF_CHECK_ERR(Nrf24_setRADDR(&dev, (uint8_t*)"WALK1"));
 
-
-
-    // #define TRANSMITTER
-    #define RECEIVER
-
-
-
-    NRF24_t dev;
-    Nrf24_init(&dev);                                  // zwraca void
-    // Nrf24_enableNoAckFeature(&dev);
-    const uint8_t payload_length = 32;
-    const uint8_t rf_channel = 90;                     // CONFIG_RADIO_CHANNEL
-    Nrf24_config(&dev, rf_channel, payload_length);    // zwraca void
-    nRF_CHECK_ERR(Nrf24_setTADDR(&dev, (uint8_t*)"WALK1"));
-    nRF_CHECK_ERR(Nrf24_setRADDR(&dev, (uint8_t*)"WALK1"));
-
-    uint8_t buf[32];
+        uint8_t buf[32];
+    // ~nRF //
 
     while (1)
     {
@@ -78,12 +79,14 @@ void app_main(void)
                 // TX:
                 memset(buf, 0xda, sizeof(buf));
 
-                Nrf24_send(&dev, buf);
-                // Nrf24_sendNoAck(&dev, buf);
+                // Nrf24_send(&dev, buf);
+                Nrf24_sendNoAck(&dev, buf);
 
                 bool status = Nrf24_isSend(&dev, 1000);
+
+                printf("Sending data - %d", status);
+                vTaskDelay(pdMS_TO_TICKS(20));
             }
-            vTaskDelay(pdMS_TO_TICKS(20));
         }
         #endif
 
