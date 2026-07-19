@@ -63,7 +63,10 @@ void app_main(void)
     ESP_ERROR_CHECK(nRF_init());
 
     #ifdef TRANSMITTER
-        ESP_ERROR_CHECK(mic_init());
+        // ESP_ERROR_CHECK(mic_init());
+        ESP_ERROR_CHECK(mic_init_cont());
+        ESP_ERROR_CHECK(mic_stream_init());
+
         ESP_ERROR_CHECK(ptt_init());
     #endif
 
@@ -74,6 +77,11 @@ void app_main(void)
 
     // uint8_t tmp_single_packet_buffer[32];
     // int64_t TPUT_last_tick_before_full_1s = esp_timer_get_time();
+
+    xTaskCreate(cont_mic_stream_task, "mic", 4096, NULL, 5, NULL);
+    xTaskCreate(nRF_stream_task,      "nrf", 4096, NULL, 5, NULL);
+
+    /*
 
     while (1)
     {
@@ -134,7 +142,7 @@ void app_main(void)
             // mic_read_samples(MIC_BUFFER, MIC_BUFFER_SIZE);
             // gpio_output_toggle(&blinker);
 
-            /*
+
                     // TX:
                     for(int i=0; i<32; i++)
                     {
@@ -147,7 +155,7 @@ void app_main(void)
                     printf("Sending data - %d \n", status);
 
                     vTaskDelay(pdMS_TO_TICKS(20));
-                */
+                
 
             // play_tone();
 
@@ -169,21 +177,23 @@ void app_main(void)
             //     }
 
             //     if(pattern_holds)
-            //     {
-            //         printf("END MARKER detected\n");
-            //         speaker_stream_write(MIC_BUFFER, mic_buffer_idx); // graj tyle, ile faktycznie odebrano (bez wartownika)
-            //         mic_buffer_idx = 0;                               // gotowi na kolejna wiadomosc
-            //     }
-            //     else if(mic_buffer_idx + TRANSMISSION_PAYLOAD_LENGTH / sizeof(MIC_DATA_TYPE) <= MIC_BUFFER_SIZE)
-            //     {
-            //         memcpy(&MIC_BUFFER[mic_buffer_idx], pkt, TRANSMISSION_PAYLOAD_LENGTH);   // dopisz audio
-            //         mic_buffer_idx += TRANSMISSION_PAYLOAD_LENGTH / sizeof(MIC_DATA_TYPE);   // 16
-            //     }
-            //     // else: bufor pelny -> pomijaj audio az do wartownika
-            // }
-        }
-        #endif
-    }
+    //         //     {
+    //         //         printf("END MARKER detected\n");
+    //         //         speaker_stream_write(MIC_BUFFER, mic_buffer_idx); // graj tyle, ile faktycznie odebrano (bez wartownika)
+    //         //         mic_buffer_idx = 0;                               // gotowi na kolejna wiadomosc
+    //         //     }
+    //         //     else if(mic_buffer_idx + TRANSMISSION_PAYLOAD_LENGTH / sizeof(MIC_DATA_TYPE) <= MIC_BUFFER_SIZE)
+    //         //     {
+    //         //         memcpy(&MIC_BUFFER[mic_buffer_idx], pkt, TRANSMISSION_PAYLOAD_LENGTH);   // dopisz audio
+    //         //         mic_buffer_idx += TRANSMISSION_PAYLOAD_LENGTH / sizeof(MIC_DATA_TYPE);   // 16
+    //         //     }
+    //         //     // else: bufor pelny -> pomijaj audio az do wartownika
+    //         // }
+    //     }
+    //     #endif
+    // }
+
+    */
 
     ESP_ERROR_CHECK(speaker_stream_end());
 

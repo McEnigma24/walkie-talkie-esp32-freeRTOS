@@ -7,6 +7,9 @@
 #include "esp_check.h"
 #include "esp_timer.h"
 #include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_continuous.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "speaker.h"
 #include "mic_stream.h"
 
@@ -163,65 +166,89 @@ static int mic_get_offset(void)
 static adc_continuous_handle_t mic_adc_handle_cont;
 static float mic_baseline_cont = 0.0f;
 
+#define MIC_CONT_FRAME_SIZE   ( 512 )
+#define MIC_CONT_STORE_SIZE   ( 2048 )
+
 static esp_err_t mic_init_cont(void)
 {
-    adc_continuous_handle_cfg_t cfg = {
+    adc_continuous_handle_cfg_t handle_cfg = {
+        .max_store_buf_size = MIC_CONT_STORE_SIZE,
+        .conv_frame_size = MIC_CONT_FRAME_SIZE,
+    };
+    ESP_RETURN_ON_ERROR(
+        adc_continuous_new_handle(&handle_cfg, &mic_adc_handle_cont),
+        "MIC",
+        "adc handle"
+    );
+
+    adc_digi_pattern_config_t pattern = {
+        .atten = MIC_ADC_ATTEN,
+        .channel = MIC_ADC_CHANNEL,
+        .unit = MIC_ADC_UNIT,
+        .bit_width = ADC_BITWIDTH_DEFAULT,
+    };
+
+    adc_continuous_config_t dig_cfg = {
         .sample_freq_hz = 8'000,                  // MIC sampling rate
         .conv_mode = ADC_CONV_SINGLE_UNIT_1,
         .format = ADC_DIGI_OUTPUT_FORMAT_TYPE1,
-    }
-
-    // adc_oneshot_unit_init_cfg_t init_cfg = {
-    //     .unit_id = MIC_ADC_UNIT,
-    // };
-    // ESP_RETURN_ON_ERROR(adc_continuous_new_unit(&init_cfg, &mic_adc_handle_cont), "MIC", "adc unit");
-
-    adc_continuous_chan_cfg_t chan_cfg = {
-        .atten = MIC_ADC_ATTEN,
-        .bitwidth = ADC_BITWIDTH_DEFAULT,
+        .pattern_num = 1,
+        .adc_pattern = &pattern,
     };
     ESP_RETURN_ON_ERROR(
-        adc_continuous_config_channel(mic_adc_handle_cont, MIC_ADC_CHANNEL, &chan_cfg),
+        adc_continuous_config(mic_adc_handle_cont, &dig_cfg),
         "MIC",
-        "adc channel"
+        "adc config"
     );
 
-    // int64_t sum = 0;
-    // for (int i = 0; i < MIC_CALIB_SAMPLES; i++)
-    // {
-    //     int raw = 0;
-    //     ESP_RETURN_ON_ERROR(
-    //         adc_oneshot_read(mic_adc_handle_cont, MIC_ADC_CHANNEL, &raw),
-    //         "MIC",
-    //         "calib read"
-    //     );
-    //     sum += raw;
-    // }
-
-    // mic_baseline = (float)sum / MIC_CALIB_SAMPLES;
+    ESP_RETURN_ON_ERROR(
+        adc_continuous_start(mic_adc_handle_cont),
+        "MIC",
+        "adc start"
+    );
 
     return ESP_OK;
 }
 
-static void process_recorded_audio()
+static size_t process_recorded_audio(uint8_t *raw, uint32_t got, int16_t *out)
 {
-    for(int i=0; i<SIZE; i++)
+    size_t n = 0;
+
+    for (uint32_t i = 0; i + SOC_ADC_DIGI_RESULT_BYTES <= got; i += SOC_ADC_DIGI_RESULT_BYTES)
     {
-        mic_baseline = mic_baseline * 0.995f + (float)raw[i] * 0.005f;
-        int delta = raw[i] - (int)mic_baseline;
-        raw[i] = mic_clamp16((int32_t)delta * MIC_GAIN);
+        adc_digi_output_data_t *p = (adc_digi_output_data_t *)&raw[i];
+        if (p->type1.channel != MIC_ADC_CHANNEL)
+        {
+            continue;
+        }
+
+        int sample = p->type1.data;
+        mic_baseline_cont = mic_baseline_cont * 0.995f + (float)sample * 0.005f;
+        int delta = sample - (int)mic_baseline_cont;
+        out[n++] = mic_clamp16((int32_t)delta * MIC_GAIN);
     }
+
+    return n;
 }
 
-static void cont_mic_stream_start()
+static void cont_mic_stream_task(void *arg)
 {
-    uint8_t raw[512];
+    (void)arg;
+    uint8_t raw[MIC_CONT_FRAME_SIZE];
+    int16_t pcm[MIC_CONT_FRAME_SIZE / SOC_ADC_DIGI_RESULT_BYTES];
     uint32_t got = 0;
 
-    adc_continuous_read(mic_adc_handle_cont, raw, sizeof(raw), &got, portMAX_DELAY); // blocked until 256 samples are collected
-    process_recorded_audio(raw, got);
-
-    // push to mic_stream
+    while (1)
+    {
+        if (adc_continuous_read(mic_adc_handle_cont, raw, sizeof(raw), &got, portMAX_DELAY) == ESP_OK)
+        {
+            size_t n = process_recorded_audio(raw, got, pcm);
+            if (n > 0)
+            {
+                xStreamBufferSend(audio_stream, pcm, n * sizeof(int16_t), portMAX_DELAY);
+            }
+        }
+    }
 }
 
 

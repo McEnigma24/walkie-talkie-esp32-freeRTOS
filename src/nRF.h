@@ -56,11 +56,26 @@ static void nRF_send_data(uint8_t* data, uint32_t byte_length)
     }
 }
 
-static void nRF_stream_task(void)
+static void nRF_stream_task(void *arg)
 {
-    // blocked on Stream until full 32 bytes are ready
+    (void)arg;
+    uint8_t packet[TRANSMISSION_PAYLOAD_LENGTH];
 
-    // nRF_send_data()
+    while (1)
+    {
+        // blocked on Stream until full 32 bytes are ready
+        size_t got = xStreamBufferReceive(
+            audio_stream,
+            packet,
+            TRANSMISSION_PAYLOAD_LENGTH,
+            portMAX_DELAY
+        );
+
+        if (got == TRANSMISSION_PAYLOAD_LENGTH)
+        {
+            nRF_send_data(packet, TRANSMISSION_PAYLOAD_LENGTH);
+        }
+    }
 }
 
 
