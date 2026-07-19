@@ -67,11 +67,13 @@ void app_main(void)
         ESP_ERROR_CHECK(ptt_init());
     #endif
 
-
     #ifdef RECEIVER
         ESP_ERROR_CHECK(speaker_stream_begin());
         int mic_buffer_idx = 0;
     #endif
+
+    // uint8_t tmp_single_packet_buffer[32];
+    // int64_t TPUT_last_tick_before_full_1s = esp_timer_get_time();
 
     while (1)
     {
@@ -79,7 +81,60 @@ void app_main(void)
         {
             if (ptt_is_transmitting())
             {
-                /*
+                // ptt_force_stop(); // turning to non-transmit mode
+                nRF_send_data((uint8_t*)tmp_single_packet_buffer, 32);
+
+                // gpio_output_blink(&blinker, 1, 50, 20);
+            }
+        }
+        #endif
+
+        #ifdef RECEIVER
+        {
+            if (Nrf24_dataReady(&dev))
+            {
+                Nrf24_getData(&dev, tmp_single_packet_buffer);
+            }
+
+
+
+            // static uint32_t TPUT_volume = 0;
+            // static uint32_t TPUT_count = 0;
+
+            // TPUT_volume += 32;
+            // TPUT_count++;
+
+            // int64_t now_us = esp_timer_get_time();
+            // int64_t diff_us = ( now_us - TPUT_last_tick_before_full_1s );
+            // if(1'000'000 < diff_us)
+            // {
+            //     // printf("TPUT_volume  %ld\n", TPUT_volume);
+            //     // printf("TPUT_count  %ld\n", TPUT_count);
+            //     printf("TPUT_volume per second %fB\n", TPUT_volume / ((float)diff_us / 1'000'000));
+            //     printf("TPUT_count  per second %f\n", TPUT_count / ((float)diff_us / 1'000'000));
+
+            //     TPUT_last_tick_before_full_1s = now_us;
+
+            //     TPUT_volume = 0;
+            //     TPUT_count = 0;
+            // }
+
+            // transmittig all stored data //
+            // nRF_send_data((uint8_t*)MIC_BUFFER, MIC_BUFFER_BYTE_SIZE);
+
+            // uint8_t ending_preamble[32];
+            // for(int i=0; i<32; i+=2)
+            // {
+            //     ending_preamble[i] = 0;
+            //     ending_preamble[i + 1] = 0xff;
+            // }
+            // nRF_send_data((uint8_t*)ending_preamble, 32);
+
+            // gpio_output_toggle(&blinker);
+            // mic_read_samples(MIC_BUFFER, MIC_BUFFER_SIZE);
+            // gpio_output_toggle(&blinker);
+
+            /*
                     // TX:
                     for(int i=0; i<32; i++)
                     {
@@ -94,73 +149,38 @@ void app_main(void)
                     vTaskDelay(pdMS_TO_TICKS(20));
                 */
 
-                gpio_output_toggle(&blinker);
-                mic_read_samples(MIC_BUFFER, MIC_BUFFER_SIZE);
-                gpio_output_toggle(&blinker);
-
-                ptt_force_stop(); // turning to non-transmit mode
-
-
-                // transmittig all stored data //
-                nRF_send_data((uint8_t*)MIC_BUFFER, MIC_BUFFER_BYTE_SIZE);
-
-                uint8_t ending_preamble[32];
-                for(int i=0; i<32; i+=2)
-                {
-                    ending_preamble[i] = 0;
-                    ending_preamble[i + 1] = 0xff;
-                }
-                nRF_send_data((uint8_t*)ending_preamble, 32);
-            }
-        }
-        #endif
-
-        #ifdef RECEIVER
-        {
             // play_tone();
 
-            // RX:
-            if (Nrf24_dataReady(&dev))
-            {
-                uint8_t pkt[32];
+            // // RX:
+            // if (Nrf24_dataReady(&dev))
+            // {
+            //     uint8_t pkt[32];
 
-                Nrf24_getData(&dev, pkt); // odbierz do bufora tymczasowego, NIE prosto do MIC_BUFFER
+            //     Nrf24_getData(&dev, pkt); // odbierz do bufora tymczasowego, NIE prosto do MIC_BUFFER
 
-                bool pattern_holds = true;
-                for(int i=0; i<32; i+=2)
-                {
-                    if(! ((pkt[i] == 0) && (pkt[(i + 1)] == 0xff)))
-                    {
-                        pattern_holds = false;
-                        break;
-                    }
-                }
+            //     bool pattern_holds = true;
+            //     for(int i=0; i<32; i+=2)
+            //     {
+            //         if(! ((pkt[i] == 0) && (pkt[(i + 1)] == 0xff)))
+            //         {
+            //             pattern_holds = false;
+            //             break;
+            //         }
+            //     }
 
-                if(pattern_holds)
-                {
-                    printf("END MARKER detected\n");
-                    speaker_stream_write(MIC_BUFFER, mic_buffer_idx); // graj tyle, ile faktycznie odebrano (bez wartownika)
-                    mic_buffer_idx = 0;                               // gotowi na kolejna wiadomosc
-                }
-                else if(mic_buffer_idx + TRANSMISSION_PAYLOAD_LENGTH / sizeof(MIC_DATA_TYPE) <= MIC_BUFFER_SIZE)
-                {
-                    memcpy(&MIC_BUFFER[mic_buffer_idx], pkt, TRANSMISSION_PAYLOAD_LENGTH);   // dopisz audio
-                    mic_buffer_idx += TRANSMISSION_PAYLOAD_LENGTH / sizeof(MIC_DATA_TYPE);   // 16
-                }
-                // else: bufor pelny -> pomijaj audio az do wartownika
-
-                // printf("\n");
-                // for(int i=0; i<32; i++)
-                // {
-                //     if((i % 4) == 0) printf("Payload data ");
-
-                //     char sting_bufor[12];
-                //     snprintf(sting_bufor, sizeof(sting_bufor), "%d", i);
-                //     printf(" [%s]:0x%02x,", sting_bufor, buf[i]);
-
-                //     if((i % 4) == 3) printf("\n");
-                // }
-            }
+            //     if(pattern_holds)
+            //     {
+            //         printf("END MARKER detected\n");
+            //         speaker_stream_write(MIC_BUFFER, mic_buffer_idx); // graj tyle, ile faktycznie odebrano (bez wartownika)
+            //         mic_buffer_idx = 0;                               // gotowi na kolejna wiadomosc
+            //     }
+            //     else if(mic_buffer_idx + TRANSMISSION_PAYLOAD_LENGTH / sizeof(MIC_DATA_TYPE) <= MIC_BUFFER_SIZE)
+            //     {
+            //         memcpy(&MIC_BUFFER[mic_buffer_idx], pkt, TRANSMISSION_PAYLOAD_LENGTH);   // dopisz audio
+            //         mic_buffer_idx += TRANSMISSION_PAYLOAD_LENGTH / sizeof(MIC_DATA_TYPE);   // 16
+            //     }
+            //     // else: bufor pelny -> pomijaj audio az do wartownika
+            // }
         }
         #endif
     }
@@ -168,6 +188,17 @@ void app_main(void)
     ESP_ERROR_CHECK(speaker_stream_end());
 
 
+    // printf("\n");
+    // for(int i=0; i<32; i++)
+    // {
+    //     if((i % 4) == 0) printf("Payload data ");
+
+    //     char sting_bufor[12];
+    //     snprintf(sting_bufor, sizeof(sting_bufor), "%d", i);
+    //     printf(" [%s]:0x%02x,", sting_bufor, buf[i]);
+
+    //     if((i % 4) == 3) printf("\n");
+    // }
 
     // while (1)
     // {

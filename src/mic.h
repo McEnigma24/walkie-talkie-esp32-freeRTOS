@@ -8,6 +8,7 @@
 #include "esp_timer.h"
 #include "esp_adc/adc_oneshot.h"
 #include "speaker.h"
+#include "mic_stream.h"
 
 #define MIC_GPIO            36
 #define MIC_ADC_UNIT        ADC_UNIT_1
@@ -156,5 +157,74 @@ static int mic_get_offset(void)
 {
     return (int)mic_baseline;
 }
+
+
+
+static adc_continuous_handle_t mic_adc_handle_cont;
+static float mic_baseline_cont = 0.0f;
+
+static esp_err_t mic_init_cont(void)
+{
+    adc_continuous_handle_cfg_t cfg = {
+        .sample_freq_hz = 8'000,                  // MIC sampling rate
+        .conv_mode = ADC_CONV_SINGLE_UNIT_1,
+        .format = ADC_DIGI_OUTPUT_FORMAT_TYPE1,
+    }
+
+    // adc_oneshot_unit_init_cfg_t init_cfg = {
+    //     .unit_id = MIC_ADC_UNIT,
+    // };
+    // ESP_RETURN_ON_ERROR(adc_continuous_new_unit(&init_cfg, &mic_adc_handle_cont), "MIC", "adc unit");
+
+    adc_continuous_chan_cfg_t chan_cfg = {
+        .atten = MIC_ADC_ATTEN,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    ESP_RETURN_ON_ERROR(
+        adc_continuous_config_channel(mic_adc_handle_cont, MIC_ADC_CHANNEL, &chan_cfg),
+        "MIC",
+        "adc channel"
+    );
+
+    // int64_t sum = 0;
+    // for (int i = 0; i < MIC_CALIB_SAMPLES; i++)
+    // {
+    //     int raw = 0;
+    //     ESP_RETURN_ON_ERROR(
+    //         adc_oneshot_read(mic_adc_handle_cont, MIC_ADC_CHANNEL, &raw),
+    //         "MIC",
+    //         "calib read"
+    //     );
+    //     sum += raw;
+    // }
+
+    // mic_baseline = (float)sum / MIC_CALIB_SAMPLES;
+
+    return ESP_OK;
+}
+
+static void process_recorded_audio()
+{
+    for(int i=0; i<SIZE; i++)
+    {
+        mic_baseline = mic_baseline * 0.995f + (float)raw[i] * 0.005f;
+        int delta = raw[i] - (int)mic_baseline;
+        raw[i] = mic_clamp16((int32_t)delta * MIC_GAIN);
+    }
+}
+
+static void cont_mic_stream_start()
+{
+    uint8_t raw[512];
+    uint32_t got = 0;
+
+    adc_continuous_read(mic_adc_handle_cont, raw, sizeof(raw), &got, portMAX_DELAY); // blocked until 256 samples are collected
+    process_recorded_audio(raw, got);
+
+    // push to mic_stream
+}
+
+
+
 
 #endif

@@ -3,6 +3,7 @@
 
 #include "mirf.h"
 #include <stdint.h>
+#include "mic_stream.h"
 
 static NRF24_t dev;
 
@@ -19,10 +20,14 @@ static NRF24_t dev;
     } \
 }
 
+#define STREAM_MODE
+
 static esp_err_t nRF_init(void)
 {
     Nrf24_init(&dev);                                  // zwraca void
-    // Nrf24_enableNoAckFeature(&dev);
+    #ifdef STREAM_MODE
+        Nrf24_enableNoAckFeature(&dev);
+    #endif
     Nrf24_config(&dev, CHANNEL, TRANSMISSION_PAYLOAD_LENGTH);    // CONFIG_RADIO_CHANNEL
     nRF_CHECK_ERR(Nrf24_setTADDR(&dev, (uint8_t*)"WALK1"));
     nRF_CHECK_ERR(Nrf24_setRADDR(&dev, (uint8_t*)"WALK1"));
@@ -32,20 +37,30 @@ static esp_err_t nRF_init(void)
 
 static void nRF_send_data(uint8_t* data, uint32_t byte_length)
 {
-    if(byte_length % TRANSMISSION_PAYLOAD_BYTE_ALIGNMENT != 0)
-    {
-        printf("Buffer missaligned\n");
-        return;
-    }
+    // if(byte_length % TRANSMISSION_PAYLOAD_BYTE_ALIGNMENT != 0)
+    // {
+    //     printf("Buffer missaligned\n");
+    //     return;
+    // }
 
     for(int i = 0; i < byte_length; i += TRANSMISSION_PAYLOAD_LENGTH)
     {
-        Nrf24_send(&dev, &data[i]);
-        // Nrf24_sendNoAck(&dev, &data[i]);
+        #ifdef STREAM_MODE
+            Nrf24_sendNoAck(&dev, &data[i]);
+        #else
+            Nrf24_send(&dev, &data[i]);
+        #endif
 
-        bool status = Nrf24_isSend(&dev, 1000);
-        printf("Sending data - %d \n", status);
+        // bool status = Nrf24_isSend(&dev, 1000);
+        // printf("Sending data - %d \n", status);
     }
+}
+
+static void nRF_stream_task(void)
+{
+    // blocked on Stream until full 32 bytes are ready
+
+    // nRF_send_data()
 }
 
 
