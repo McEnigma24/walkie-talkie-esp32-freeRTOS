@@ -12,6 +12,8 @@
 #include "ptt.h"
 #include "nRF.h"
 
+#include "psa/crypto.h"
+
 
 // static int16_t tx_chunk[BUFFER_SAMPLES];
 
@@ -52,6 +54,58 @@
 #define MIC_BUFFER_BYTE_SIZE ( MIC_BUFFER_SIZE * sizeof(MIC_DATA_TYPE) )
 static MIC_DATA_TYPE MIC_BUFFER[MIC_BUFFER_SIZE]; // 10'000 * sizeof(int16_t) == ~20 kB, w .bss
 
+// AES-CTR na PSA Crypto (Mbed TLS 4.x). CTR jest trybem strumieniowym:
+// szyfruje dowolna dlugosc bez paddingu, a szyfrowanie == deszyfrowanie.
+// Uwaga: dla danego klucza kazda wiadomosc MUSI miec unikalne IV (nonce).
+static bool aes_ctr_stream_init(mbedtls_svc_key_id_t *key_id,
+                                psa_cipher_operation_t *op,
+                                const uint8_t *key, size_t key_len,
+                                uint8_t *iv_out, size_t iv_size)
+{
+    // "Metryczka" klucza - opisuje CO to za klucz i DO CZEGO wolno go uzyc.
+    // PSA egzekwuje te ustawienia: proba uzycia klucza niezgodnie z metryczka konczy sie bledem.
+    // PSA_KEY_ATTRIBUTES_INIT to bezpieczny stan poczatkowy (wszystkie pola wyzerowane).
+    psa_key_attributes_t attr = PSA_KEY_ATTRIBUTES_INIT;
+
+    // usage flags = jakie operacje sa dozwolone tym kluczem (maska bitowa, mozna laczyc '|'):
+    //   PSA_KEY_USAGE_ENCRYPT - wolno szyfrowac (strona TX),
+    //   PSA_KEY_USAGE_DECRYPT - wolno deszyfrowac (strona RX).
+    // Tu wlaczamy oba, bo ten sam klucz wspoldzielimy do TX i RX (walkie-talkie w obie strony).
+    psa_set_key_usage_flags(&attr, PSA_KEY_USAGE_ENCRYPT | PSA_KEY_USAGE_DECRYPT);
+
+    // algorithm policy = z jakim algorytmem ten klucz moze byc uzyty.
+    //   PSA_ALG_CTR - AES w trybie licznikowym (Counter). Tryb strumieniowy: brak paddingu,
+    //   dowolna dlugosc danych, enc == dec. Klucz "przypiety" do CTR nie da sie np. uzyc w GCM.
+    psa_set_key_algorithm(&attr, PSA_ALG_CTR);
+
+    // key type = rodzina algorytmu / typ materialu klucza.
+    //   PSA_KEY_TYPE_AES - surowe bajty klucza AES. Dlugosc (128/192/256 bit) PSA wywnioskuje
+    //   automatycznie z key_len przekazanego do psa_import_key (16/24/32 bajty).
+    psa_set_key_type(&attr, PSA_KEY_TYPE_AES);
+
+    // Wgrywa surowe bajty klucza do PSA i zwraca jego uchwyt (key_id).
+    // Od teraz poslugujemy sie tylko uchwytem - sam material klucza jest schowany w PSA.
+    psa_status_t st = psa_import_key(&attr, key, key_len, key_id);
+    if (st != PSA_SUCCESS) { printf("psa_import_key: %ld\n", (long)st); return false; }
+
+    // Reset obiektu operacji do stanu poczatkowego przed konfiguracja (wymagane przez PSA).
+    *op = (psa_cipher_operation_t) PSA_CIPHER_OPERATION_INIT;
+
+    // Konfiguruje operacje jako SZYFROWANIE danym kluczem i algorytmem CTR.
+    // (Po stronie RX uzyjesz analogicznie psa_cipher_decrypt_setup.)
+    st = psa_cipher_encrypt_setup(op, *key_id, PSA_ALG_CTR);
+    if (st != PSA_SUCCESS) { printf("encrypt_setup: %ld\n", (long)st); return false; }
+
+    // Losuje IV (nonce) - dla AES to 16 bajtow (rozmiar bloku). iv_len = ile bajtow faktycznie zapisano.
+    // IV NIE jest tajne, ale MUSI byc unikalne dla danego klucza -> wyslij je do odbiornika
+    // (np. w pierwszym pakiecie), a RX ustawi je przez psa_cipher_set_iv przed deszyfrowaniem.
+    size_t iv_len = 0;
+    st = psa_cipher_generate_iv(op, iv_out, iv_size, &iv_len);
+    if (st != PSA_SUCCESS) { printf("generate_iv: %ld\n", (long)st); return false; }
+
+    return true;
+}
+
 void app_main(void)
 {
     printf("Walkie-talkie %d Hz - PTT na GPIO%d\n", SAMPLE_RATE, PTT_GPIO);
@@ -71,15 +125,72 @@ void app_main(void)
     #endif
 
     #ifdef RECEIVER
-        ESP_ERROR_CHECK(speaker_stream_begin());
-        int mic_buffer_idx = 0;
+        // ESP_ERROR_CHECK(speaker_stream_begin());
+        // int mic_buffer_idx = 0;
     #endif
 
     // uint8_t tmp_single_packet_buffer[32];
     // int64_t TPUT_last_tick_before_full_1s = esp_timer_get_time();
 
-    xTaskCreate(cont_mic_stream_task, "mic", 4096, NULL, 5, NULL);
-    xTaskCreate(nRF_stream_task,      "nrf", 4096, NULL, 5, NULL);
+
+
+    // Inicjalizacja podsystemu PSA Crypto - MUSI byc wywolane raz przed jakąkolwiek operacja PSA.
+    // Zwraca PSA_SUCCESS (0) przy powodzeniu; opakowujemy w ESP_ERROR_CHECK, by ubic boot przy bledzie.
+    ESP_ERROR_CHECK(psa_crypto_init() == PSA_SUCCESS ? ESP_OK : ESP_FAIL);
+
+    // 16 bajtow = klucz AES-128. TODO: podmien na realny, wspoldzielony klucz (nie same zera!).
+    static const uint8_t aes_key[16] = {0};
+
+    // Uchwyt klucza w PSA - MBEDTLS_SVC_KEY_ID_INIT to "pusty/niewazny" identyfikator na start.
+    mbedtls_svc_key_id_t key_id = MBEDTLS_SVC_KEY_ID_INIT;
+
+    // Obiekt trzymajacy stan trwajacego szyfrowania (m.in. licznik CTR) miedzy kolejnymi chunkami.
+    psa_cipher_operation_t enc = PSA_CIPHER_OPERATION_INIT;
+
+    // Bufor na wygenerowane IV (16 B dla AES). Do wyslania odbiornikowi.
+    uint8_t iv[16];
+
+    if (aes_ctr_stream_init(&key_id, &enc, aes_key, sizeof(aes_key), iv, sizeof(iv)))
+    {
+        // Kazdy przychodzacy chunk audio szyfrujesz w locie tym samym obiektem 'enc'.
+        // W CTR wyjscie ma dokladnie tyle bajtow co wejscie (out_len == wejscie), bez paddingu.
+        uint8_t plain[32] = {0};   // dane jawne (tu placeholder; docelowo probki audio)
+        uint8_t cipher[32];        // bufor na szyfrogram; musi byc >= rozmiar wejscia
+        size_t out_len = 0;        // ile bajtow szyfrogramu faktycznie zapisano
+        // psa_cipher_update: przetwarza kolejna porcje strumienia, kontynuujac licznik CTR.
+        // Woluj to wielokrotnie - po jednym razie na kazdy chunk audio.
+        psa_status_t st = psa_cipher_update(&enc, plain, sizeof(plain),
+                                            cipher, sizeof(cipher), &out_len);
+        printf("psa_cipher_update: %ld, out=%u\n", (long)st, (unsigned)out_len);
+
+        // Sprzatanie po zakonczeniu strumienia:
+        //   psa_cipher_abort  - zwalnia stan operacji (bezpieczne tez po bledzie),
+        //   psa_destroy_key   - usuwa klucz z PSA i czysci jego bajty z pamieci.
+        psa_cipher_abort(&enc);
+        psa_destroy_key(key_id);
+    }
+
+    /*
+        #define BENCHMARK(x, numbers) \
+        { \
+        \
+        \
+        }
+
+        int64_t next_us = esp_timer_get_time();
+        int64_t next_us = esp_timer_get_time();
+        int64_t next_us = esp_timer_get_time();
+
+
+    */
+
+
+
+
+    return;
+
+    // xTaskCreate(cont_mic_stream_task, "mic", 4096, NULL, 5, NULL);
+    // xTaskCreate(nRF_stream_task,      "nrf", 4096, NULL, 5, NULL);
 
     /*
 
@@ -155,7 +266,7 @@ void app_main(void)
                     printf("Sending data - %d \n", status);
 
                     vTaskDelay(pdMS_TO_TICKS(20));
-                
+
 
             // play_tone();
 

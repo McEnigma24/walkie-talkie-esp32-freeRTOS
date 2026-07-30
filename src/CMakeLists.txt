@@ -1,9 +1,12 @@
 # This file was automatically generated for projects
 # without default 'CMakeLists.txt' file.
 
-FILE(GLOB_RECURSE app_sources ${CMAKE_SOURCE_DIR}/src/*.*)
+# Kazdy modul to osobny .c -> osobny .obj (main.c.obj, mic.c.obj, ...).
+FILE(GLOB_RECURSE app_sources ${CMAKE_CURRENT_SOURCE_DIR}/*.c)
 
-idf_component_register(SRCS ${app_sources} REQUIRES esp_driver_i2s esp_adc mirf)
+idf_component_register(SRCS ${app_sources}
+                       INCLUDE_DIRS "."
+                       REQUIRES esp_driver_i2s esp_adc mirf mbedtls)
 
 # Helpery walkie-talkie (mic.h/speaker.h/blinker.h) bywaja chwilowo nieuzywane -
 # nie chcemy, zeby "unused" wywalalo build przez -Werror w komponencie aplikacji.
