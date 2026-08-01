@@ -45,17 +45,26 @@ void app_main(void)
         // ESP_ERROR_CHECK(mic_init_cont());
         // ESP_ERROR_CHECK(mic_stream_init());
 
-        // ESP_ERROR_CHECK(ptt_init());
+        ESP_ERROR_CHECK(ptt_init());
+
+        uint8_t tmp_single_packet_buffer[32] = {
+            1, 2, 3, 4, 5, 6, 7, 8,
+            1, 2, 3, 4, 5, 6, 7, 8,
+            1, 2, 3, 4, 5, 6, 7, 8,
+            1, 2, 3, 4, 5, 6, 7, 8
+        };
     #endif
 
     #ifdef RECEIVER
         // ESP_ERROR_CHECK(speaker_stream_begin());
         // int mic_buffer_idx = 0;
+        uint8_t tmp_single_packet_buffer[32] = { 0 };
     #endif
 
-    uint8_t tmp_single_packet_buffer[32];
     int64_t TPUT_last_tick_before_full_1s = esp_timer_get_time();
     radio_packet_t tmp_single_encypted_packet;
+
+    gpio_output_blink(&blinker, 3, 500, 500);
 
     /*
         #define BENCHMARK(x, numbers) \
@@ -80,26 +89,41 @@ void app_main(void)
             {
                 // ptt_force_stop(); // turning to non-transmit mode
 
-                // encrypt //
+                encode_audio_packet(tmp_single_packet_buffer, &tmp_single_encypted_packet);
+                nRF_send_data((uint8_t*)&tmp_single_encypted_packet, sizeof(radio_packet_t));
 
 
-                nRF_send_data((uint8_t*)tmp_single_packet_buffer, 32);
 
-                // gpio_output_blink(&blinker, 1, 50, 20);
+                // just to check
+                // gpio_output_blink(&blinker, 1, 50, 50);
             }
         }
         #endif
 
         #ifdef RECEIVER
         {
-            if (Nrf24_dataReady(&dev))
+            if (! Nrf24_dataReady(&dev))
             {
-                Nrf24_getData(&dev, tmp_single_packet_buffer);
-
-                // decrypt //
-
-
+                continue;
             }
+
+            Nrf24_getData(&dev, (uint8_t*)&tmp_single_encypted_packet);
+            decode_radio_packet(&tmp_single_encypted_packet, tmp_single_packet_buffer);
+
+            // printf("Received payload\n");
+            // for(int i=0; i<PAYLOAD_DATA_BYTE_SIZE; i += 8)
+            // {
+            //     printf("[%d]:%d, [%d]:%d, [%d]:%d, [%d]:%d, [%d]:%d, [%d]:%d, [%d]:%d, [%d]:%d\n",
+            //         i + 0, tmp_single_packet_buffer[i + 0],
+            //         i + 1, tmp_single_packet_buffer[i + 1],
+            //         i + 2, tmp_single_packet_buffer[i + 2],
+            //         i + 3, tmp_single_packet_buffer[i + 3],
+            //         i + 4, tmp_single_packet_buffer[i + 4],
+            //         i + 5, tmp_single_packet_buffer[i + 5],
+            //         i + 6, tmp_single_packet_buffer[i + 6],
+            //         i + 7, tmp_single_packet_buffer[i + 7]
+            //     );
+            // }
 
             static uint32_t TPUT_volume = 0;
             static uint32_t TPUT_count = 0;

@@ -64,7 +64,7 @@ static void sync_SN(uint16_t packet_SN)
 {
     if(LOCAL_SN != packet_SN)
     {
-        ESP_LOGE(TAG, "Sequence Numbers are OUT OF SYNC   local: %d  packet: %d", (int)LOCAL_SN, (int)packet_SN);
+        // ESP_LOGE(TAG, "Sequence Numbers are OUT OF SYNC   local: %d  packet: %d", (int)LOCAL_SN, (int)packet_SN);
         LOCAL_SN = packet_SN;
     }
 
