@@ -56,7 +56,7 @@ void nRF_stream_task(void *arg)
 
     while (1)
     {
-        // blocked on Stream until full 32 bytes are ready
+        // blocked on Stream until full 30 bytes are ready
         size_t got = xStreamBufferReceive(
             audio_stream,
             packet,
