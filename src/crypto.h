@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "psa/crypto.h"
+#include "esp_err.h"
 #include "esp_log.h"
 
 static const char *TAG = "PSA_MICRO_PACKET";
@@ -46,13 +47,17 @@ typedef struct __attribute__((packed))
 
 static uint16_t LOCAL_SN = 0;
 
-static void add_SN()
+// Zwraca numer wpisany do IV - ten sam musi trafić do nagłówka pakietu,
+// inaczej odbiornik zbuduje inne IV i odszyfruje szum.
+static uint16_t add_SN(void)
 {
-    // Doklejamy 2 bajty sequence number na końcu (Little Endian)
-    IV_key[14] = (LOCAL_SN >> 8) & 0xFF;
-    IV_key[15] = LOCAL_SN & 0xFF;
+    uint16_t used_SN = LOCAL_SN++;
 
-    LOCAL_SN++;
+    // Doklejamy 2 bajty sequence number na końcu (Little Endian)
+    IV_key[14] = (used_SN >> 8) & 0xFF;
+    IV_key[15] = used_SN & 0xFF;
+
+    return used_SN;
 }
 
 static void sync_SN(uint16_t packet_SN)
@@ -72,16 +77,20 @@ static void sync_SN(uint16_t packet_SN)
 
 
 
+
+
 // Functions //
 
-static bool crypto_init(void)
+// Zwraca esp_err_t, bo main.c opakowuje to w ESP_ERROR_CHECK - dla tego makra
+// sukcesem jest wylacznie ESP_OK (0), a nie "prawda".
+static esp_err_t crypto_init(void)
 {
     // Uruchamia backend PSA (RNG, sterowniki, magazyn kluczy).
     psa_status_t status = psa_crypto_init();
     if (status != PSA_SUCCESS)
     {
         ESP_LOGE(TAG, "psa_crypto_init: %d", (int)status);
-        return false;
+        return ESP_FAIL;
     }
 
     // "Metryczka" klucza - PSA egzekwuje ją przy każdym użyciu.
@@ -104,11 +113,11 @@ static bool crypto_init(void)
     if (status != PSA_SUCCESS)
     {
         ESP_LOGE(TAG, "psa_import_key: %d", (int)status);
-        return false;
+        return ESP_FAIL;
     }
 
     ESP_LOGI(TAG, "Zaimportowano klucz AES-%d (id=%u)", AES_KEY_BITS, (unsigned)aes_key_id);
-    return true;
+    return ESP_OK;
 }
 
 // // Kasuje klucz z pamięci PSA (np. przy wyłączaniu radia).
@@ -135,35 +144,53 @@ static bool encode_audio_packet(uint8_t* IN_raw_audio, radio_packet_t* OUT_packe
         return false;
     }
 
-    add_SN(); // increments counter
-
-
+    OUT_packet_to_send->sequence_number = add_SN(); // increments counter
 
     // --- Używamy "Multi-part" jako Single-part, by podać WŁASNE IV ---
     psa_cipher_operation_t operation = PSA_CIPHER_OPERATION_INIT;
 
     // 1. Setup operacji szyfrowania
     status = psa_cipher_encrypt_setup(&operation, aes_key_id, PSA_ALG_CTR);
+    if (status != PSA_SUCCESS)
+    {
+        ESP_LOGE(TAG, "psa_cipher_encrypt_setup: %d", (int)status);
+        return false;
+    }
 
     // 2. WSTRZYKUJEMY WŁASNE IV (Magia, której nie ma w psa_cipher_encrypt)
     status = psa_cipher_set_iv(&operation, IV_key, sizeof(IV_key));
+    if (status != PSA_SUCCESS)
+    {
+        ESP_LOGE(TAG, "psa_cipher_set_iv: %d", (int)status);
+        psa_cipher_abort(&operation);
+        return false;
+    }
 
     size_t length_out = 0;
 
     // 3. Szyfrujemy nasze 30 bajtów bezpośrednio do structa pakietu
     status = psa_cipher_update(&operation,
-                               IN_raw_audio,                    PAYLOAD_DATA_BYTE_SIZE,
-                               packet_to_send->encrypted_audio, PAYLOAD_DATA_BYTE_SIZE,
+                               IN_raw_audio,                        PAYLOAD_DATA_BYTE_SIZE,
+                               OUT_packet_to_send->encrypted_audio, PAYLOAD_DATA_BYTE_SIZE,
                                &length_out);
+    if (status != PSA_SUCCESS || length_out != PAYLOAD_DATA_BYTE_SIZE)
+    {
+        ESP_LOGE(TAG, "psa_cipher_update: %d (out %u B)", (int)status, (unsigned)length_out);
+        psa_cipher_abort(&operation);
+        return false;
+    }
 
     // 4. Koniec operacji. W przypadku CTR 'finish' nic nie dopisuje, ale zwalnia RAM na ESP32!
     size_t finish_len = 0;
     status = psa_cipher_finish(&operation, NULL, 0, &finish_len);
+    if (status != PSA_SUCCESS)
+    {
+        ESP_LOGE(TAG, "psa_cipher_finish: %d", (int)status);
+        psa_cipher_abort(&operation);
+        return false;
+    }
 
-    // Gotowe! Możesz wysłać 'packet_to_send' w eter.
-    // Ma równe 32 bajty: [2 bajty SEQ][30 bajtów CZYSTEGO SZYFROGRAMU]
-    // ESP_NOW_SEND(packet_to_send);
-
+    // Gotowe! Pakiet ma równe 32 bajty: [2 bajty SEQ][30 bajtów SZYFROGRAMU]
     return true;
 }
 
@@ -186,11 +213,22 @@ static bool decode_radio_packet(radio_packet_t* IN_received_packet, uint8_t* OUT
     // --- Używamy "Multi-part" jako Single-part, by podać WŁASNE IV ---
     psa_cipher_operation_t operation = PSA_CIPHER_OPERATION_INIT;
 
-    // 1. Setup operacji szyfrowania
+    // 1. Setup operacji deszyfrowania
     status = psa_cipher_decrypt_setup(&operation, aes_key_id, PSA_ALG_CTR);
+    if (status != PSA_SUCCESS)
+    {
+        ESP_LOGE(TAG, "psa_cipher_decrypt_setup: %d", (int)status);
+        return false;
+    }
 
-    // 2. WSTRZYKUJEMY WŁASNE IV (Magia, której nie ma w psa_cipher_encrypt)
+    // 2. WSTRZYKUJEMY WŁASNE IV (Magia, której nie ma w psa_cipher_decrypt)
     status = psa_cipher_set_iv(&operation, IV_key, sizeof(IV_key));
+    if (status != PSA_SUCCESS)
+    {
+        ESP_LOGE(TAG, "psa_cipher_set_iv: %d", (int)status);
+        psa_cipher_abort(&operation);
+        return false;
+    }
 
     size_t length_out = 0;
 
@@ -199,10 +237,22 @@ static bool decode_radio_packet(radio_packet_t* IN_received_packet, uint8_t* OUT
                                IN_received_packet->encrypted_audio, PAYLOAD_DATA_BYTE_SIZE,
                                OUT_raw_audio,                       PAYLOAD_DATA_BYTE_SIZE,
                                &length_out);
+    if (status != PSA_SUCCESS || length_out != PAYLOAD_DATA_BYTE_SIZE)
+    {
+        ESP_LOGE(TAG, "psa_cipher_update: %d (out %u B)", (int)status, (unsigned)length_out);
+        psa_cipher_abort(&operation);
+        return false;
+    }
 
     // 4. Koniec operacji. W przypadku CTR 'finish' nic nie dopisuje, ale zwalnia RAM na ESP32!
     size_t finish_len = 0;
     status = psa_cipher_finish(&operation, NULL, 0, &finish_len);
+    if (status != PSA_SUCCESS)
+    {
+        ESP_LOGE(TAG, "psa_cipher_finish: %d", (int)status);
+        psa_cipher_abort(&operation);
+        return false;
+    }
 
     return true;
 }
