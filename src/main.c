@@ -13,6 +13,7 @@
 #include "ptt.h"
 #include "nRF.h"
 #include "crypto.h"
+#include "event_group.h"
 
 // #define TRANSMITTER
 #define RECEIVER
@@ -25,9 +26,15 @@
 
 #define MIC_DATA_TYPE int16_t
 #define MIC_UNALIGNED_BUFFER_SIZE ( 50'000 )
-#define MIC_BUFFER_SIZE ( (((MIC_UNALIGNED_BUFFER_SIZE / TRANSMISSION_PAYLOAD_BYTE_ALIGNMENT) + (TRANSMISSION_PAYLOAD_BYTE_ALIGNMENT - 1))) * (TRANSMISSION_PAYLOAD_BYTE_ALIGNMENT) )
+#define MIC_BUFFER_SIZE ( (((MIC_UNALIGNED_BUFFER_SIZE / nRF_PAYLOAD_BYTE_ALIGNMENT) + (nRF_PAYLOAD_BYTE_ALIGNMENT - 1))) * (nRF_PAYLOAD_BYTE_ALIGNMENT) )
 #define MIC_BUFFER_BYTE_SIZE ( MIC_BUFFER_SIZE * sizeof(MIC_DATA_TYPE) )
 static MIC_DATA_TYPE MIC_BUFFER[MIC_BUFFER_SIZE]; // 10'000 * sizeof(int16_t) == ~20 kB, w .bss
+
+
+
+// void TASK_cont_mic_stream()
+
+
 
 void app_main(void)
 {
@@ -36,6 +43,8 @@ void app_main(void)
     gpio_output_t blinker = gpio_output_init(BLINK_GPIO, true);
     gpio_output_blink(&blinker, 3, 500, 500);
 
+    ESP_ERROR_CHECK(init_event_group());
+
     ESP_ERROR_CHECK(speaker_init());
     ESP_ERROR_CHECK(nRF_init());
     ESP_ERROR_CHECK(crypto_init());
@@ -43,7 +52,7 @@ void app_main(void)
     #ifdef TRANSMITTER
         // ESP_ERROR_CHECK(mic_init());
         // ESP_ERROR_CHECK(mic_init_cont());
-        // ESP_ERROR_CHECK(mic_stream_init());
+        // ESP_ERROR_CHECK(mic_to_en_crypto_stream_init());
 
         ESP_ERROR_CHECK(ptt_init());
 
@@ -78,7 +87,7 @@ void app_main(void)
         int64_t next_us = esp_timer_get_time();
     */
 
-    // xTaskCreate(cont_mic_stream_task, "mic", 4096, NULL, 5, NULL);
+    // xTaskCreate(TASK_cont_mic_stream, "mic", 4096, NULL, 5, NULL);
     // xTaskCreate(nRF_stream_task,      "nrf", 4096, NULL, 5, NULL);
 
     while (1)
@@ -89,7 +98,7 @@ void app_main(void)
             {
                 // ptt_force_stop(); // turning to non-transmit mode
 
-                encode_audio_packet(tmp_single_packet_buffer, &tmp_single_encypted_packet);
+                en_crypto_audio_packet(tmp_single_packet_buffer, &tmp_single_encypted_packet);
                 nRF_send_data((uint8_t*)&tmp_single_encypted_packet, sizeof(radio_packet_t));
 
 
@@ -111,7 +120,7 @@ void app_main(void)
             decode_radio_packet(&tmp_single_encypted_packet, tmp_single_packet_buffer);
 
             // printf("Received payload\n");
-            // for(int i=0; i<PAYLOAD_DATA_BYTE_SIZE; i += 8)
+            // for(int i=0; i<CRYPTO_PAYLOAD_BYTE_SIZE; i += 8)
             // {
             //     printf("[%d]:%d, [%d]:%d, [%d]:%d, [%d]:%d, [%d]:%d, [%d]:%d, [%d]:%d, [%d]:%d\n",
             //         i + 0, tmp_single_packet_buffer[i + 0],

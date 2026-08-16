@@ -56,9 +56,9 @@ static void ptt_task(void *arg)
                 prev_pressed = pressed;
             }
 
-            if ((now - stable_since) < pdMS_TO_TICKS(PTT_DEBOUNCE_MS))
+            if ((now - stable_since) < pdMS_to_TICKS(PTT_DEBOUNCE_MS))
             {
-                vTaskDelay(pdMS_TO_TICKS(5));
+                vTaskDelay(pdMS_to_TICKS(5));
                 continue;
             }
 

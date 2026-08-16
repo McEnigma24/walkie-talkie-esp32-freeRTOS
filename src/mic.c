@@ -7,7 +7,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "speaker.h"
-#include "mic_stream.h"
+#include "streams.h"
+#include "event_group.h"
 
 static adc_oneshot_unit_handle_t mic_adc_handle;
 static float mic_baseline = 0.0f;
@@ -216,7 +217,7 @@ static size_t process_recorded_audio(uint8_t *raw, uint32_t got, int16_t *out)
     return n;
 }
 
-void cont_mic_stream_task(void *arg)
+void TASK_cont_mic_stream(void *arg)
 {
     (void)arg;
     uint8_t raw[MIC_CONT_FRAME_SIZE];
@@ -230,7 +231,7 @@ void cont_mic_stream_task(void *arg)
             size_t n = process_recorded_audio(raw, got, pcm);
             if (n > 0)
             {
-                xStreamBufferSend(audio_stream, pcm, n * sizeof(int16_t), portMAX_DELAY);
+                xStreamBufferSend(mic_to_en_crypto_stream, pcm, n * sizeof(int16_t), portMAX_DELAY);
             }
         }
     }

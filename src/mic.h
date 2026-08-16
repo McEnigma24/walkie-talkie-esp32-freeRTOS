@@ -25,6 +25,6 @@ int mic_measure_level(void);
 int mic_get_offset(void);
 
 esp_err_t mic_init_cont(void);
-void cont_mic_stream_task(void *arg);
+void TASK_cont_mic_stream(void *arg);
 
 #endif

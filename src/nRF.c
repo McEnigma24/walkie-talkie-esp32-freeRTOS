@@ -3,7 +3,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
-#include "mic_stream.h"
+#include "streams.h"
 
 NRF24_t dev;
 
@@ -21,7 +21,7 @@ esp_err_t nRF_init(void)
     #ifdef STREAM_MODE
         Nrf24_enableNoAckFeature(&dev);
     #endif
-    Nrf24_config(&dev, CHANNEL, TRANSMISSION_PAYLOAD_LENGTH);    // CONFIG_RADIO_CHANNEL
+    Nrf24_config(&dev, CHANNEL, nRF_PAYLOAD_BYTE_SIZE);    // CONFIG_RADIO_CHANNEL
     nRF_CHECK_ERR(Nrf24_setTADDR(&dev, (uint8_t*)"WALK1"));
     nRF_CHECK_ERR(Nrf24_setRADDR(&dev, (uint8_t*)"WALK1"));
 
@@ -30,13 +30,13 @@ esp_err_t nRF_init(void)
 
 void nRF_send_data(uint8_t* data, uint32_t byte_length)
 {
-    // if(byte_length % TRANSMISSION_PAYLOAD_BYTE_ALIGNMENT != 0)
+    // if(byte_length % nRF_PAYLOAD_BYTE_ALIGNMENT != 0)
     // {
     //     printf("Buffer missaligned\n");
     //     return;
     // }
 
-    for(int i = 0; i < byte_length; i += TRANSMISSION_PAYLOAD_LENGTH)
+    for(int i = 0; i < byte_length; i += nRF_PAYLOAD_BYTE_SIZE)
     {
         #ifdef STREAM_MODE
             Nrf24_sendNoAck(&dev, &data[i]);
@@ -52,21 +52,21 @@ void nRF_send_data(uint8_t* data, uint32_t byte_length)
 void nRF_stream_task(void *arg)
 {
     (void)arg;
-    uint8_t packet[TRANSMISSION_PAYLOAD_LENGTH];
+    uint8_t packet[nRF_PAYLOAD_BYTE_SIZE];
 
     while (1)
     {
         // blocked on Stream until full 30 bytes are ready
         size_t got = xStreamBufferReceive(
-            audio_stream,
+            mic_to_en_crypto_stream,
             packet,
-            TRANSMISSION_PAYLOAD_LENGTH,
+            nRF_PAYLOAD_BYTE_SIZE,
             portMAX_DELAY
         );
 
-        if (got == TRANSMISSION_PAYLOAD_LENGTH)
+        if (got == nRF_PAYLOAD_BYTE_SIZE)
         {
-            nRF_send_data(packet, TRANSMISSION_PAYLOAD_LENGTH);
+            nRF_send_data(packet, nRF_PAYLOAD_BYTE_SIZE);
         }
     }
 }

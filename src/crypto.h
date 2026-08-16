@@ -6,7 +6,9 @@
 #include "psa/crypto.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "event_group.h"
 
+#define CRYPTO_PAYLOAD_BYTE_SIZE ( 30 )
 static const char *TAG = "PSA_MICRO_PACKET";
 
 // ======================= KLUCZ GŁÓWNY AES ======================= //
@@ -36,13 +38,11 @@ static uint8_t IV_key[16] = {
     0x77, 0x88, 0x00, 0x00
 };
 
-#define PAYLOAD_DATA_BYTE_SIZE ( 30 )
-
 // Struktura dokładnie odwzorowująca to, co leci w eter
 typedef struct __attribute__((packed))
 {
     uint16_t sequence_number;
-    uint8_t  encrypted_audio[PAYLOAD_DATA_BYTE_SIZE];
+    uint8_t  encrypted_audio[CRYPTO_PAYLOAD_BYTE_SIZE];
 } radio_packet_t;
 
 static uint16_t LOCAL_SN = 0;
@@ -62,11 +62,12 @@ static uint16_t add_SN(void)
 
 static void sync_SN(uint16_t packet_SN)
 {
-    if(LOCAL_SN != packet_SN)
-    {
-        // ESP_LOGE(TAG, "Sequence Numbers are OUT OF SYNC   local: %d  packet: %d", (int)LOCAL_SN, (int)packet_SN);
-        LOCAL_SN = packet_SN;
-    }
+    // if(LOCAL_SN != packet_SN)
+    // {
+    //     // ESP_LOGE(TAG, "Sequence Numbers are OUT OF SYNC   local: %d  packet: %d", (int)LOCAL_SN, (int)packet_SN);
+    //     LOCAL_SN = packet_SN;
+    // }
+    LOCAL_SN = packet_SN;
 
     // Doklejamy 2 bajty sequence number na końcu (Little Endian)
     IV_key[14] = (LOCAL_SN >> 8) & 0xFF;
@@ -130,7 +131,7 @@ static esp_err_t crypto_init(void)
 //     }
 // }
 
-static bool encode_audio_packet(uint8_t* IN_raw_audio, radio_packet_t* OUT_packet_to_send)
+static bool en_crypto_audio_packet(uint8_t* IN_raw_audio, radio_packet_t* OUT_packet_to_send)
 {
     psa_status_t status;
     if (aes_key_id == 0)
@@ -170,10 +171,10 @@ static bool encode_audio_packet(uint8_t* IN_raw_audio, radio_packet_t* OUT_packe
 
     // 3. Szyfrujemy nasze 30 bajtów bezpośrednio do structa pakietu
     status = psa_cipher_update(&operation,
-                               IN_raw_audio,                        PAYLOAD_DATA_BYTE_SIZE,
-                               OUT_packet_to_send->encrypted_audio, PAYLOAD_DATA_BYTE_SIZE,
+                               IN_raw_audio,                        CRYPTO_PAYLOAD_BYTE_SIZE,
+                               OUT_packet_to_send->encrypted_audio, CRYPTO_PAYLOAD_BYTE_SIZE,
                                &length_out);
-    if (status != PSA_SUCCESS || length_out != PAYLOAD_DATA_BYTE_SIZE)
+    if (status != PSA_SUCCESS || length_out != CRYPTO_PAYLOAD_BYTE_SIZE)
     {
         ESP_LOGE(TAG, "psa_cipher_update: %d (out %u B)", (int)status, (unsigned)length_out);
         psa_cipher_abort(&operation);
@@ -234,10 +235,10 @@ static bool decode_radio_packet(radio_packet_t* IN_received_packet, uint8_t* OUT
 
     // 3. Deszyfrujemy
     status = psa_cipher_update(&operation,
-                               IN_received_packet->encrypted_audio, PAYLOAD_DATA_BYTE_SIZE,
-                               OUT_raw_audio,                       PAYLOAD_DATA_BYTE_SIZE,
+                               IN_received_packet->encrypted_audio, CRYPTO_PAYLOAD_BYTE_SIZE,
+                               OUT_raw_audio,                       CRYPTO_PAYLOAD_BYTE_SIZE,
                                &length_out);
-    if (status != PSA_SUCCESS || length_out != PAYLOAD_DATA_BYTE_SIZE)
+    if (status != PSA_SUCCESS || length_out != CRYPTO_PAYLOAD_BYTE_SIZE)
     {
         ESP_LOGE(TAG, "psa_cipher_update: %d (out %u B)", (int)status, (unsigned)length_out);
         psa_cipher_abort(&operation);
@@ -256,6 +257,56 @@ static bool decode_radio_packet(radio_packet_t* IN_received_packet, uint8_t* OUT
 
     return true;
 }
+
+
+
+
+
+// MIC -> EN_CRYPTO -> nRF Transmit //
+
+static void TASK_crypto_en_crypto()
+{
+    (void)arg;
+    uint8_t packet[nRF_PAYLOAD_BYTE_SIZE];
+
+    while(1)
+    {
+        blockWaitForTransmitMode();
+
+        while(isTransmitModeStillActive())
+        {
+            size_t got = xStreamBufferReceive(
+                mic_to_en_crypto_stream,
+                packet,
+                nRF_PAYLOAD_BYTE_SIZE,
+                portMAX_DELAY
+            );
+        }
+    }
+}
+
+
+
+// nRF Receive -> DE_CRYPTO -> SPEAKER //
+
+static void TASK_crypto_decode()
+{
+    (void)arg;
+    uint8_t packet[nRF_PAYLOAD_BYTE_SIZE];
+
+    while(1)
+    {
+        blockWaitForReceiveMode();
+
+        while(isReceiveModeStillActive())
+        {
+
+        }
+    }
+}
+
+
+
 
 
 #endif
