@@ -11,19 +11,19 @@
 //     mic_to_en_crypto_stream,
 //     packet,
 //     nRF_PAYLOAD_BYTE_SIZE,
-//     portMAX_DELAY
+//     common_timeout
 // );
 
 // xStreamBufferSend(
 //     mic_to_en_crypto_stream,
 //     pcm,
 //     n * sizeof(int16_t),
-//     portMAX_DELAY
+//     common_timeout
 // );
 
 
 
-
+extern const TickType_t common_timeout = pdMS_TO_TICKS( 1 );
 
 // TRANSMIT - streams //             MIC -> EN_CRYPTO -> nRF Transmit
 

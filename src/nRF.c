@@ -3,7 +3,6 @@
 #include <assert.h>
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
-#include "streams.h"
 
 NRF24_t dev;
 
@@ -49,24 +48,4 @@ void nRF_send_data(uint8_t* data, uint32_t byte_length)
     }
 }
 
-void nRF_stream_task(void *arg)
-{
-    (void)arg;
-    uint8_t packet[nRF_PAYLOAD_BYTE_SIZE];
 
-    while (1)
-    {
-        // blocked on Stream until full 30 bytes are ready
-        size_t got = xStreamBufferReceive(
-            mic_to_en_crypto_stream,
-            packet,
-            nRF_PAYLOAD_BYTE_SIZE,
-            portMAX_DELAY
-        );
-
-        if (got == nRF_PAYLOAD_BYTE_SIZE)
-        {
-            nRF_send_data(packet, nRF_PAYLOAD_BYTE_SIZE);
-        }
-    }
-}

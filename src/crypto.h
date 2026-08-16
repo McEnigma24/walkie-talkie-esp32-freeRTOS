@@ -267,7 +267,9 @@ static bool decode_radio_packet(radio_packet_t* IN_received_packet, uint8_t* OUT
 static void TASK_crypto_en_crypto()
 {
     (void)arg;
-    uint8_t packet[nRF_PAYLOAD_BYTE_SIZE];
+    uint8_t RAW_AUDIO_INPUT[CRYPTO_PAYLOAD_BYTE_SIZE];
+    radio_packet_t packet_to_fill;
+
 
     while(1)
     {
@@ -277,10 +279,38 @@ static void TASK_crypto_en_crypto()
         {
             size_t got = xStreamBufferReceive(
                 mic_to_en_crypto_stream,
-                packet,
-                nRF_PAYLOAD_BYTE_SIZE,
-                portMAX_DELAY
+                RAW_AUDIO_INPUT,
+                CRYPTO_PAYLOAD_BYTE_SIZE,
+                common_timeout
             );
+
+            if(got > 0)
+            {
+                // we got something //
+
+                if(got != CRYPTO_PAYLOAD_BYTE_SIZE)
+                {
+                    ESP_LOGE(TAG, "Received from StreamBuffer with incorrect size -> %d != 30", got);
+                    continue;
+                }
+
+                if(! en_crypto_audio_packet(RAW_AUDIO_INPUT, packet_to_fill))
+                {
+                    ESP_LOGE(TAG, "Failed to encode data", got);
+                    continue;
+                }
+
+                // now, we have a encrypted packet -> packet_to_fill
+                //
+                // we send its content to another stream buffer to be sent by nRF
+
+                xStreamBufferSend(
+                    en_crypto_to_nRF_transmit_stream,
+                    packet_to_fill,
+                    sizeof(packet_to_fill),
+                    common_timeout
+                );
+            }
         }
     }
 }
@@ -292,7 +322,8 @@ static void TASK_crypto_en_crypto()
 static void TASK_crypto_decode()
 {
     (void)arg;
-    uint8_t packet[nRF_PAYLOAD_BYTE_SIZE];
+    uint8_t RAW_AUDIO_OUTPUT[CRYPTO_PAYLOAD_BYTE_SIZE];
+    radio_packet_t received_packet;
 
     while(1)
     {
@@ -300,7 +331,40 @@ static void TASK_crypto_decode()
 
         while(isReceiveModeStillActive())
         {
+            size_t got = xStreamBufferReceive(
+                nRF_receive_to_de_crypto_stream,
+                (uint8_t)&received_packet,
+                sizeof(radio_packet_t),
+                common_timeout
+            );
 
+            if(got > 0)
+            {
+                // we got something //
+
+                if(got != nRF_PAYLOAD_BYTE_SIZE)
+                {
+                    ESP_LOGE(TAG, "Received from StreamBuffer with incorrect size -> %d != 32", got);
+                    continue;
+                }
+
+                if(! decode_radio_packet(received_packet, RAW_AUDIO_OUTPUT))
+                {
+                    ESP_LOGE(TAG, "Failed to decode data", got);
+                    continue;
+                }
+
+                // now, we have a decrypted audio
+                //
+                // we put it on the speaker
+
+                xStreamBufferSend(
+                    de_crypto_to_speaker_stream,
+                    RAW_AUDIO_OUTPUT,
+                    CRYPTO_PAYLOAD_BYTE_SIZE,
+                    common_timeout
+                );
+            }
         }
     }
 }
