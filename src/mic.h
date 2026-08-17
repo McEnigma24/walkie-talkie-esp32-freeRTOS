@@ -12,7 +12,9 @@
 #define MIC_ADC_ATTEN       ADC_ATTEN_DB_12
 #define MIC_CALIB_SAMPLES   256
 #define MIC_LEVEL_SAMPLES   128
-#define MIC_GAIN            35
+// Zmierzone szczyty przy mowie siegaja ~4000 (delta po odjeciu skladowej stalej),
+// wiec 32767/4000 ~= 8 to najwieksze wzmocnienie, przy ktorym nic sie nie obcina.
+#define MIC_GAIN            8
 
 #define MIC_CONT_FRAME_SIZE   ( 512 )
 #define MIC_CONT_STORE_SIZE   ( 2048 )
