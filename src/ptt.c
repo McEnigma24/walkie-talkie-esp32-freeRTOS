@@ -72,7 +72,7 @@ static void ptt_task(void *arg)
             else if (click_armed)
             {
                 atomic_fetch_xor(&ptt_transmitting, 1);
-                gpio_output_set(&blinker, 1);
+                gpio_output_toggle(&blinker);
 
                 click_armed = false;
             }

@@ -43,7 +43,7 @@ void app_main(void)
 
     // INITS //
     {
-        blinker = init_gpio_output(BLINK_GPIO, true);
+        blinker = init_gpio_output(BLINK_GPIO, OFF);
         gpio_output_blink(&blinker, 3, 500, 500);
 
             ESP_ERROR_CHECK(init_ptt());
@@ -60,7 +60,7 @@ void app_main(void)
             ESP_ERROR_CHECK(init_nRF());
             ESP_ERROR_CHECK(init_crypto());
 
-        gpio_output_blink(&blinker, 3, 500, 500);
+        gpio_output_blink(&blinker, 3, 250, 250);
     }
 
     // TASKS //

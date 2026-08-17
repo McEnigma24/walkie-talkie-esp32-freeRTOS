@@ -155,6 +155,14 @@ int mic_get_offset(void)
 static adc_continuous_handle_t mic_adc_handle_cont;
 static float mic_baseline_cont = 0.0f;
 
+#define MIC_CONT_ADC_FREQ_HZ  ( SAMPLE_RATE * MIC_CONT_DECIMATION )
+
+_Static_assert(
+    MIC_CONT_ADC_FREQ_HZ >= SOC_ADC_SAMPLE_FREQ_THRES_LOW &&
+    MIC_CONT_ADC_FREQ_HZ <= SOC_ADC_SAMPLE_FREQ_THRES_HIGH,
+    "SAMPLE_RATE * MIC_CONT_DECIMATION poza zakresem ADC continuous"
+);
+
 esp_err_t init_mic_cont(void)
 {
     adc_continuous_handle_cfg_t handle_cfg = {
@@ -171,11 +179,11 @@ esp_err_t init_mic_cont(void)
         .atten = MIC_ADC_ATTEN,
         .channel = MIC_ADC_CHANNEL,
         .unit = MIC_ADC_UNIT,
-        .bit_width = ADC_BITWIDTH_DEFAULT,
+        .bit_width = SOC_ADC_DIGI_MAX_BITWIDTH,
     };
 
     adc_continuous_config_t dig_cfg = {
-        .sample_freq_hz = 8'000,                  // MIC sampling rate
+        .sample_freq_hz = MIC_CONT_ADC_FREQ_HZ,
         .conv_mode = ADC_CONV_SINGLE_UNIT_1,
         .format = ADC_DIGI_OUTPUT_FORMAT_TYPE1,
         .pattern_num = 1,
@@ -198,6 +206,8 @@ esp_err_t init_mic_cont(void)
 
 static size_t process_recorded_audio(uint8_t *raw, uint32_t got, int16_t *out)
 {
+    static int32_t acc = 0;
+    static int acc_count = 0;
     size_t n = 0;
 
     for (uint32_t i = 0; i + SOC_ADC_DIGI_RESULT_BYTES <= got; i += SOC_ADC_DIGI_RESULT_BYTES)
@@ -210,8 +220,16 @@ static size_t process_recorded_audio(uint8_t *raw, uint32_t got, int16_t *out)
 
         int sample = p->type1.data;
         mic_baseline_cont = mic_baseline_cont * 0.995f + (float)sample * 0.005f;
-        int delta = sample - (int)mic_baseline_cont;
-        out[n++] = mic_clamp16((int32_t)delta * MIC_GAIN);
+        acc += sample - (int)mic_baseline_cont;
+
+        if (++acc_count < MIC_CONT_DECIMATION)
+        {
+            continue;
+        }
+
+        out[n++] = mic_clamp16((acc / MIC_CONT_DECIMATION) * MIC_GAIN);
+        acc = 0;
+        acc_count = 0;
     }
 
     return n;

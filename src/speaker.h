@@ -9,7 +9,7 @@
 #define I2S_BCLK  26   // BCLK  → pin "26"
 #define I2S_DOUT  27   // DIN   → pin "27"
 
-#define SAMPLE_RATE     16'000
+#define SAMPLE_RATE     8'000
 #define TONE_HZ         440
 #define AMPLITUDE       6000
 #define BUFFER_SAMPLES  256

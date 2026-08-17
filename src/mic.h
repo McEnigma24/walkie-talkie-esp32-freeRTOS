@@ -17,6 +17,10 @@
 #define MIC_CONT_FRAME_SIZE   ( 512 )
 #define MIC_CONT_STORE_SIZE   ( 2048 )
 
+// ESP32 nie obsluguje ADC continuous ponizej SOC_ADC_SAMPLE_FREQ_THRES_LOW (20 kHz),
+// wiec probkujemy z nadprobkowaniem i decymujemy do SAMPLE_RATE.
+#define MIC_CONT_DECIMATION   ( 4 )
+
 esp_err_t mic_init(void);
 esp_err_t mic_read_raw(int *raw);
 esp_err_t mic_record(int16_t *buffer, size_t buffer_bytes, uint32_t duration_ms);

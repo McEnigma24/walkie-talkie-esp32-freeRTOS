@@ -6,6 +6,9 @@
 
 #define BLINK_GPIO 22
 
+#define ON  ( false )
+#define OFF ( true )
+
 typedef struct
 {
     uint8_t pin;

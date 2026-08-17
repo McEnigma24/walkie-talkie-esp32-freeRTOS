@@ -6,6 +6,9 @@
 
 gpio_output_t blinker;
 
+// #define ON  ( true )
+// #define OFF ( false )
+
 gpio_output_t init_gpio_output(uint8_t pin, bool state)
 {
     gpio_output_t wrapper = {
