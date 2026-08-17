@@ -9,6 +9,7 @@
 #include "speaker.h"
 #include "streams.h"
 #include "event_group.h"
+#include "diagnostics.h"
 #include "esp_log.h"
 
 static const char *TAG = "MIC";
@@ -203,10 +204,25 @@ esp_err_t init_mic_cont(void)
     return ESP_OK;
 }
 
-// --- diagnostyka poziomu sygnalu (do wyrzucenia po dostrojeniu wzmocnienia) ---
+#if AUDIO_DIAGNOSTICS
+
 static int32_t stat_peak_delta = 0;   // szczyt PRZED pomnozeniem przez MIC_GAIN
 static uint32_t stat_clipped = 0;
 static uint32_t stat_samples = 0;
+
+static void mic_note_sample(int32_t delta, int32_t scaled)
+{
+    int32_t magnitude = delta < 0 ? -delta : delta;
+    if (magnitude > stat_peak_delta)
+    {
+        stat_peak_delta = magnitude;
+    }
+    if (scaled > 32767 || scaled < -32768)
+    {
+        stat_clipped++;
+    }
+    stat_samples++;
+}
 
 static void mic_report_levels(void)
 {
@@ -233,6 +249,11 @@ static void mic_report_levels(void)
     stat_clipped = 0;
     stat_samples = 0;
 }
+
+#else
+#define mic_note_sample(delta, scaled) ((void)0)
+#define mic_report_levels()            ((void)0)
+#endif
 
 static size_t process_recorded_audio(uint8_t *raw, uint32_t got, int16_t *out)
 {
@@ -269,16 +290,7 @@ static size_t process_recorded_audio(uint8_t *raw, uint32_t got, int16_t *out)
         int32_t delta = acc / MIC_CONT_DECIMATION;
         int32_t scaled = delta * MIC_GAIN;
 
-        int32_t magnitude = delta < 0 ? -delta : delta;
-        if (magnitude > stat_peak_delta)
-        {
-            stat_peak_delta = magnitude;
-        }
-        if (scaled > 32767 || scaled < -32768)
-        {
-            stat_clipped++;
-        }
-        stat_samples++;
+        mic_note_sample(delta, scaled);
 
         out[n++] = mic_clamp16(scaled);
         acc = 0;

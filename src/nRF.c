@@ -11,6 +11,7 @@
 #include "crypto.h"
 #include "streams.h"
 #include "event_group.h"
+#include "diagnostics.h"
 
 _Static_assert(sizeof(radio_packet_t) == nRF_PAYLOAD_BYTE_SIZE, "radio_packet_t musi miec dokladnie nRF_PAYLOAD_BYTE_SIZE bajtow");
 
@@ -111,7 +112,8 @@ void TASK_nRF_send(void *arg)
     }
 }
 
-// --- diagnostyka strat pakietow (do wyrzucenia po dostrojeniu lacza) ---
+#if AUDIO_DIAGNOSTICS
+
 static void nRF_report_losses(uint16_t sequence_number)
 {
     static int64_t next_report_us = 0;
@@ -145,8 +147,10 @@ static void nRF_report_losses(uint16_t sequence_number)
     uint32_t total = stat_received + stat_lost;
     ESP_LOGI(
         NRF_TAG,
-        "odbior: %lu pakietow/s (cel 533), zgubione %lu = %lu%%",
+        "odbior: %lu/%d pakietow/s = %lu B/s, zgubione %lu = %lu%%",
         (unsigned long)stat_received,
+        AUDIO_PACKETS_PER_SEC,
+        (unsigned long)(stat_received * sizeof(radio_packet_t)),
         (unsigned long)stat_lost,
         (unsigned long)(total > 0 ? (stat_lost * 100 / total) : 0)
     );
@@ -154,6 +158,10 @@ static void nRF_report_losses(uint16_t sequence_number)
     stat_received = 0;
     stat_lost = 0;
 }
+
+#else
+#define nRF_report_losses(sequence_number) ((void)0)
+#endif
 
 void TASK_nRF_receive(void *arg)
 {
