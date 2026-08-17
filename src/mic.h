@@ -12,9 +12,50 @@
 #define MIC_ADC_ATTEN       ADC_ATTEN_DB_12
 #define MIC_CALIB_SAMPLES   256
 #define MIC_LEVEL_SAMPLES   128
-// Zmierzone szczyty przy mowie siegaja ~4000 (delta po odjeciu skladowej stalej),
-// wiec 32767/4000 ~= 8 to najwieksze wzmocnienie, przy ktorym nic sie nie obcina.
+// Wzmocnienie startowe. Dalej dobiera je AGC ponizej - zmierzone szczyty przy
+// mowie siegaly ~4000 (delta po odjeciu skladowej stalej), czyli 32767/4000 ~= 8.
 #define MIC_GAIN            8
+
+// --- AGC: wzmocnienie dobierane w locie tak, zeby szczyty ladowaly pod sufitem ---
+// Wzmocnienie trzymamy w stalym przecinku, bo krok calkowity (8 -> 7) to skok o 12%,
+// slyszalny jako szarpniecie glosnosci.
+#define MIC_GAIN_FRAC_BITS    ( 8 )
+#define MIC_GAIN_ONE          ( 1 << MIC_GAIN_FRAC_BITS )
+
+// Celujemy ponizej 32767, zeby transjent miedzy jednym a drugim blokiem mial gdzie wejsc
+#define MIC_AGC_TARGET_PEAK   ( 28'000 )
+#define MIC_AGC_GAIN_MIN      ( 1 * MIC_GAIN_ONE )
+
+// Mowa daje szczyty 2000-4000, wiec do celu 28000 wystarcza wzmocnienia 7-14.
+// Wyzszy sufit tylko podbijalby szum - wzmocnienie nie poprawia stosunku S/N.
+#define MIC_AGC_GAIN_MAX      ( 16 * MIC_GAIN_ONE )
+
+// Zmierzona podloga szumow to szczyty 110-140 na sekunde, mowa startuje od ~2000.
+// Prog stawiamy posrodku, z zapasem nad szumem.
+#define MIC_AGC_NOISE_FLOOR   ( 250 )
+
+// Ponizej progu wysylamy cisze zamiast wzmocnionego szumu. Wylaczamy z opoznieniem,
+// zeby przerwy miedzy sylabami nie tnly wypowiedzi na kawalki.
+#define MIC_SQUELCH_HANG_MS   ( 300 )
+
+// Blok ADC to MIC_CONT_FRAME_SIZE/2/MIC_CONT_DECIMATION probek, czyli ~5 ms.
+// Ponizsze przesuniecia to ulamek dystansu nadrabiany na kazdy taki blok.
+
+// Za glosno -> schodzimy natychmiast (polowa dystansu, ~18 ms). To jedyna ochrona
+// przed obcinaniem, wiec zostaje szybka niezaleznie od reszty ustawien.
+#define MIC_AGC_ATTACK_SHIFT  ( 1 )
+
+// Za cicho -> podbijamy 1/16 na blok (~85 ms). Szybko, ale nie na tyle, zeby
+// rozkrecac wzmocnienie w przerwach miedzy sylabami.
+#define MIC_AGC_RISE_SHIFT    ( 4 )
+
+// Cisza -> przez ten czas nie ruszamy wzmocnienia, zeby pauza w zdaniu nie
+// przestawiala poziomu ustalonego na glosie. Kazdy blok z mowa resetuje odliczanie.
+#define MIC_AGC_HOLD_MS       ( 5'000 )
+
+// Po wygasnieciu hold wracamy leniwie (~1.4 s) do MIC_GAIN, ale tylko w dol -
+// podnoszenie wzmocnienia na ciszy zafundowaloby przester na pierwszym slowie.
+#define MIC_AGC_DECAY_SHIFT   ( 8 )
 
 #define MIC_CONT_FRAME_SIZE   ( 512 )
 #define MIC_CONT_STORE_SIZE   ( 2048 )

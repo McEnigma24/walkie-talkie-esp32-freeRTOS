@@ -204,9 +204,64 @@ esp_err_t init_mic_cont(void)
     return ESP_OK;
 }
 
+static int32_t mic_gain_q = MIC_GAIN * MIC_GAIN_ONE;
+static int32_t mic_block_peak = 0;
+static bool mic_squelch_open = false;
+
+// Wolane raz na ramke ADC (~5 ms), a nie raz na probke - zmiana wzmocnienia w srodku
+// bloku wprowadzalaby wlasne zniekształcenie.
+static void mic_agc_update(void)
+{
+    const int32_t resting_gain = MIC_GAIN * MIC_GAIN_ONE;
+    static int64_t hold_until_us = 0;
+    static int64_t squelch_close_at_us = 0;
+
+    int32_t peak = mic_block_peak;
+    int64_t now_us = esp_timer_get_time();
+    mic_block_peak = 0;
+
+    if (peak < MIC_AGC_NOISE_FLOOR)
+    {
+        if (now_us >= squelch_close_at_us)
+        {
+            mic_squelch_open = false;
+        }
+
+        if (now_us < hold_until_us)
+        {
+            return; // pauza w zdaniu - trzymamy poziom dobrany na glosie
+        }
+
+        if (mic_gain_q > resting_gain)
+        {
+            mic_gain_q -= (mic_gain_q - resting_gain) >> MIC_AGC_DECAY_SHIFT;
+        }
+        return;
+    }
+
+    mic_squelch_open = true;
+    squelch_close_at_us = now_us + MIC_SQUELCH_HANG_MS * 1000;
+    hold_until_us = now_us + MIC_AGC_HOLD_MS * 1000;
+
+    int32_t wanted = (MIC_AGC_TARGET_PEAK * MIC_GAIN_ONE) / peak;
+    if (wanted > MIC_AGC_GAIN_MAX)
+    {
+        wanted = MIC_AGC_GAIN_MAX;
+    }
+    if (wanted < MIC_AGC_GAIN_MIN)
+    {
+        wanted = MIC_AGC_GAIN_MIN;
+    }
+
+    int32_t diff = wanted - mic_gain_q;
+    mic_gain_q += (diff < 0)
+        ? (diff >> MIC_AGC_ATTACK_SHIFT)
+        : (diff >> MIC_AGC_RISE_SHIFT);
+}
+
 #if AUDIO_DIAGNOSTICS
 
-static int32_t stat_peak_delta = 0;   // szczyt PRZED pomnozeniem przez MIC_GAIN
+static int32_t stat_peak_delta = 0;   // szczyt PRZED wzmocnieniem
 static uint32_t stat_clipped = 0;
 static uint32_t stat_samples = 0;
 
@@ -237,10 +292,11 @@ static void mic_report_levels(void)
 
     if (stat_samples > 0)
     {
-        ESP_LOGI(TAG, "poziom: szczyt %ld (x%d -> %ld), przester %lu/%lu probek",
+        ESP_LOGI(TAG, "poziom: szczyt %ld (agc x%ld.%02ld -> %ld), przester %lu/%lu probek",
                  (long)stat_peak_delta,
-                 MIC_GAIN,
-                 (long)(stat_peak_delta * MIC_GAIN),
+                 (long)(mic_gain_q / MIC_GAIN_ONE),
+                 (long)((mic_gain_q % MIC_GAIN_ONE) * 100 / MIC_GAIN_ONE),
+                 (long)(stat_peak_delta * mic_gain_q / MIC_GAIN_ONE),
                  (unsigned long)stat_clipped,
                  (unsigned long)stat_samples);
     }
@@ -288,11 +344,17 @@ static size_t process_recorded_audio(uint8_t *raw, uint32_t got, int16_t *out)
         }
 
         int32_t delta = acc / MIC_CONT_DECIMATION;
-        int32_t scaled = delta * MIC_GAIN;
+        int32_t scaled = delta * mic_gain_q / MIC_GAIN_ONE;
+
+        int32_t magnitude = delta < 0 ? -delta : delta;
+        if (magnitude > mic_block_peak)
+        {
+            mic_block_peak = magnitude;
+        }
 
         mic_note_sample(delta, scaled);
 
-        out[n++] = mic_clamp16(scaled);
+        out[n++] = mic_squelch_open ? mic_clamp16(scaled) : 0;
         acc = 0;
         acc_count = 0;
     }
@@ -331,6 +393,7 @@ void TASK_cont_mic_stream(void *arg)
                 xStreamBufferSend(mic_to_en_crypto_stream, pcm, n * sizeof(int16_t), common_timeout);
             }
 
+            mic_agc_update();
             mic_report_levels();
         }
 
