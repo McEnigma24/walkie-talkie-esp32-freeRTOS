@@ -130,7 +130,9 @@ void TASK_nRF_receive(void *arg)
                     Nrf24_powerUpRx(&dev);
                     Nrf24_flushRx(&dev);
                 }
-                if (Nrf24_dataReady(&dev))
+                // getData kasuje RX_DR, wiec przy kilku pakietach w FIFO samo
+                // dataReady() zatrzymaloby nas na pierwszym - dobieramy reszte po FIFO
+                if (Nrf24_dataReady(&dev) || ! Nrf24_rxFifoEmpty(&dev))
                 {
                     Nrf24_getData(&dev, (uint8_t*)&packet_received);
                     got_packet = true;
@@ -140,7 +142,10 @@ void TASK_nRF_receive(void *arg)
 
             if (! got_packet)
             {
-                vTaskDelay(1); // bez tego IDLE nie dostaje czasu i odpala sie task watchdog
+                // Bez tego IDLE nie dostaje czasu i odpala sie task watchdog.
+                // Sen musi byc krotszy niz 3 pakiety (~5.6 ms), bo tyle miesci FIFO radia
+                // - stad CONFIG_FREERTOS_HZ=1000.
+                vTaskDelay(1);
                 continue;
             }
 

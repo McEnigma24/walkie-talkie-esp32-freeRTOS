@@ -1,8 +1,8 @@
 #include "streams.h"
 
-// Przy CONFIG_FREERTOS_HZ=100 jedno tykniecie to 10 ms - ponizej tego timeout
-// zaokragla sie do zera i taski krecilyby sie bez oddawania CPU
-const TickType_t common_timeout = pdMS_TO_TICKS( 10 );
+// Musi byc co najmniej jedno tykniecie, inaczej timeout zaokragli sie do zera
+// i taski krecilyby sie bez oddawania CPU (patrz CONFIG_FREERTOS_HZ)
+const TickType_t common_timeout = pdMS_TO_TICKS( 5 );
 
 StreamBufferHandle_t mic_to_en_crypto_stream = NULL;
 StreamBufferHandle_t en_crypto_to_nRF_transmit_stream = NULL;

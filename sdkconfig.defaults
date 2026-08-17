@@ -6,3 +6,8 @@ CONFIG_MOSI_GPIO=23
 CONFIG_CE_GPIO=17
 CONFIG_CSN_GPIO=5
 CONFIG_SPI2_HOST=y
+
+# Audio leci w paczkach po 15 probek, czyli ~533 pakiety/s (co 1.9 ms).
+# Przy domyslnych 100 Hz najkrotszy vTaskDelay(1) to az 10 ms i odbiornik
+# nie nadazal opróznic 3-elementowego FIFO radia.
+CONFIG_FREERTOS_HZ=1000
