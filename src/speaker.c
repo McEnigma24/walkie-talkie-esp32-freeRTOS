@@ -2,9 +2,16 @@
 
 #include <math.h>
 #include "esp_check.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "driver/gpio.h"
 #include "driver/i2s_std.h"
+
+#include "crypto.h"
+#include "streams.h"
+#include "event_group.h"
+
+static const char *TAG = "SPEAKER";
 
 static i2s_chan_handle_t tx_handle;
 
@@ -204,10 +211,10 @@ void play_tone(void)
     ESP_ERROR_CHECK(speaker_stream_end());
 }
 
-static void TASK_speaker(void)
+void TASK_speaker(void *arg)
 {
     (void)arg;
-    uint8_t RAW_AUDIO_OUTPUT[CRYPTO_PAYLOAD_BYTE_SIZE];
+    int16_t RAW_AUDIO_OUTPUT[CRYPTO_PAYLOAD_BYTE_SIZE / sizeof(int16_t)];
 
     while(1)
     {
@@ -230,11 +237,11 @@ static void TASK_speaker(void)
 
                 if(got != CRYPTO_PAYLOAD_BYTE_SIZE)
                 {
-                    ESP_LOGE(TAG, "Received from StreamBuffer with incorrect size -> %d != 30", got);
+                    ESP_LOGE(TAG, "Received from StreamBuffer with incorrect size -> %u != 30", (unsigned)got);
                     continue;
                 }
 
-                speaker_stream_write((uint8_t*)RAW_AUDIO_OUTPUT, 15);
+                speaker_stream_write(RAW_AUDIO_OUTPUT, CRYPTO_PAYLOAD_BYTE_SIZE / sizeof(int16_t));
             }
         }
 

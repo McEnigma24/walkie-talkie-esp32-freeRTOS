@@ -4,6 +4,12 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 
+#include "crypto.h"
+#include "streams.h"
+#include "event_group.h"
+
+_Static_assert(sizeof(radio_packet_t) == nRF_PAYLOAD_BYTE_SIZE, "radio_packet_t musi miec dokladnie nRF_PAYLOAD_BYTE_SIZE bajtow");
+
 NRF24_t dev;
 
 #define nRF_CHECK_ERR(call) { \
@@ -35,7 +41,7 @@ void nRF_send_data(uint8_t* data, uint32_t byte_length)
     //     return;
     // }
 
-    for(int i = 0; i < byte_length; i += nRF_PAYLOAD_BYTE_SIZE)
+    for(uint32_t i = 0; i < byte_length; i += nRF_PAYLOAD_BYTE_SIZE)
     {
         #ifdef STREAM_MODE
             Nrf24_sendNoAck(&dev, &data[i]);
@@ -48,4 +54,56 @@ void nRF_send_data(uint8_t* data, uint32_t byte_length)
     }
 }
 
+void TASK_nRF_send(void *arg)
+{
+    (void)arg;
+    radio_packet_t packet_to_send;
 
+    while(1)
+    {
+        blockWaitForTransmitMode();
+
+        while(isTransmitModeStillActive())
+        {
+            size_t got = xStreamBufferReceive(
+                en_crypto_to_nRF_transmit_stream,
+                &packet_to_send,
+                sizeof(packet_to_send),
+                common_timeout
+            );
+
+            if (got == sizeof(packet_to_send))
+            {
+                nRF_send_data((uint8_t*)&packet_to_send, sizeof(packet_to_send));
+            }
+        }
+    }
+}
+
+void TASK_nRF_receive(void *arg)
+{
+    (void)arg;
+    radio_packet_t packet_received;
+
+    while(1)
+    {
+        blockWaitForReceiveMode();
+
+        while(isReceiveModeStillActive())
+        {
+            if (! Nrf24_dataReady(&dev))
+            {
+                continue;
+            }
+
+            Nrf24_getData(&dev, (uint8_t*)&packet_received);
+
+            xStreamBufferSend(
+                nRF_receive_to_de_crypto_stream,
+                (uint8_t*)&packet_received,
+                sizeof(packet_received),
+                common_timeout
+            );
+        }
+    }
+}

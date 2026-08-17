@@ -4,6 +4,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+gpio_output_t blinker;
+
 gpio_output_t init_gpio_output(uint8_t pin, bool state)
 {
     gpio_output_t wrapper = {
@@ -37,8 +39,8 @@ void gpio_output_blink(gpio_output_t *wrapper, uint32_t n, uint32_t time_on_ms, 
     for (uint32_t i = 0; i < n; i++)
     {
         gpio_output_toggle(wrapper);
-        vTaskDelay(pdMS_to_TICKS(time_on_ms));
+        vTaskDelay(pdMS_TO_TICKS(time_on_ms));
         gpio_output_toggle(wrapper);
-        vTaskDelay(pdMS_to_TICKS(time_off_ms));
+        vTaskDelay(pdMS_TO_TICKS(time_off_ms));
     }
 }

@@ -13,6 +13,7 @@
 #include "ptt.h"
 #include "nRF.h"
 #include "crypto.h"
+#include "streams.h"
 #include "event_group.h"
 
 // #define TRANSMITTER

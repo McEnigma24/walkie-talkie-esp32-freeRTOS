@@ -25,6 +25,6 @@ esp_err_t speaker_stream_write(const int16_t *mono, size_t num_samples);
 esp_err_t speaker_play(const int16_t *mono, size_t buffer_bytes);
 void play_tone(void);
 
-static void TASK_speaker(void);
+void TASK_speaker(void *arg);
 
 #endif
