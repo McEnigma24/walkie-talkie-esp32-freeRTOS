@@ -21,6 +21,9 @@
 // wiec probkujemy z nadprobkowaniem i decymujemy do SAMPLE_RATE.
 #define MIC_CONT_DECIMATION   ( 4 )
 
+// Krotki timeout, zeby petla nagrywania zauwazyla przejscie z TRANSMIT na RECEIVE
+#define MIC_CONT_READ_TIMEOUT_MS  ( 20 )
+
 esp_err_t mic_init(void);
 esp_err_t mic_read_raw(int *raw);
 esp_err_t mic_record(int16_t *buffer, size_t buffer_bytes, uint32_t duration_ms);

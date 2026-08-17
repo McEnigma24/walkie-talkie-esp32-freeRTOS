@@ -277,6 +277,7 @@ void TASK_crypto_en_crypto(void *arg)
 
             if(got > 0)
             {
+                ESP_LOGE(TAG, "2. crypto got something to encode");
                 // we got something //
 
                 if(got != CRYPTO_PAYLOAD_BYTE_SIZE)
@@ -301,6 +302,8 @@ void TASK_crypto_en_crypto(void *arg)
                     sizeof(packet_to_fill),
                     common_timeout
                 );
+
+                ESP_LOGE(TAG, "3. sending to nRF for transmission");
             }
         }
     }

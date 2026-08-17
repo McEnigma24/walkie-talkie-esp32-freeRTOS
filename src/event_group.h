@@ -22,6 +22,10 @@ bool isTransmitModeStillActiveFromISR(void); // ISR
 void blockWaitForReceiveMode(void);
 void blockWaitForTransmitMode(void);
 
+void switchToTransmitMode(void);
+void switchToReceiveMode(void);
+void toggleMode(void);
+
 void switchToTransmitModeFromISR(void); // ISR
 void switchToReceiveModeFromISR(void);  // ISR
 void toggleModeFromISR(void);           // ISR

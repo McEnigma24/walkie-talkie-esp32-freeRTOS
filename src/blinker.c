@@ -22,10 +22,10 @@ gpio_output_t init_gpio_output(uint8_t pin, bool state)
     return wrapper;
 }
 
-void gpio_output_set(gpio_output_t *wrapper, bool on)
+void gpio_output_set(gpio_output_t *wrapper, bool state)
 {
-    wrapper->state = on;
-    gpio_set_level(wrapper->pin, on);
+    wrapper->state = state;
+    gpio_set_level(wrapper->pin, state);
 }
 
 void gpio_output_toggle(gpio_output_t *wrapper)

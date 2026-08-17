@@ -3,6 +3,8 @@
 #include <assert.h>
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
 
 #include "crypto.h"
 #include "streams.h"
@@ -11,6 +13,21 @@
 _Static_assert(sizeof(radio_packet_t) == nRF_PAYLOAD_BYTE_SIZE, "radio_packet_t musi miec dokladnie nRF_PAYLOAD_BYTE_SIZE bajtow");
 
 NRF24_t dev;
+
+// Mirf trzyma CSN recznie, wiec jedna operacja na radiu to kilka osobnych transakcji SPI.
+// Bez tego muteksu task nadawczy i odbiorczy przeplataja sie w srodku takiej sekwencji,
+// co wywala assert w spi_device_transmit i rozjezdza protokol nRF.
+static SemaphoreHandle_t nRF_mutex;
+
+static void nRF_lock(void)
+{
+    xSemaphoreTake(nRF_mutex, portMAX_DELAY);
+}
+
+static void nRF_unlock(void)
+{
+    xSemaphoreGive(nRF_mutex);
+}
 
 #define nRF_CHECK_ERR(call) { \
     esp_err_t ret = (call); \
@@ -22,6 +39,12 @@ NRF24_t dev;
 
 esp_err_t init_nRF(void)
 {
+    nRF_mutex = xSemaphoreCreateMutex();
+    if (nRF_mutex == NULL)
+    {
+        return ESP_ERR_NO_MEM;
+    }
+
     Nrf24_init(&dev);                                  // zwraca void
     #ifdef STREAM_MODE
         Nrf24_enableNoAckFeature(&dev);
@@ -41,6 +64,8 @@ void nRF_send_data(uint8_t* data, uint32_t byte_length)
     //     return;
     // }
 
+    nRF_lock();
+
     for(uint32_t i = 0; i < byte_length; i += nRF_PAYLOAD_BYTE_SIZE)
     {
         #ifdef STREAM_MODE
@@ -52,6 +77,8 @@ void nRF_send_data(uint8_t* data, uint32_t byte_length)
         // bool status = Nrf24_isSend(&dev, 1000);
         // printf("Sending data - %d \n", status);
     }
+
+    nRF_unlock();
 }
 
 void TASK_nRF_send(void *arg)
@@ -91,12 +118,31 @@ void TASK_nRF_receive(void *arg)
 
         while(isReceiveModeStillActive())
         {
-            if (! Nrf24_dataReady(&dev))
+            bool got_packet = false;
+
+            nRF_lock();
+            // Tryb sprawdzamy pod muteksem: inaczej moglibysmy przestawic uklad
+            // na nasluch juz po tym, jak task nadawczy wszedl w TX
+            if (isReceiveModeStillActive())
             {
+                if (dev.PTX) // nadajnik zostawil uklad w trybie TX - wracamy na nasluch
+                {
+                    Nrf24_powerUpRx(&dev);
+                    Nrf24_flushRx(&dev);
+                }
+                if (Nrf24_dataReady(&dev))
+                {
+                    Nrf24_getData(&dev, (uint8_t*)&packet_received);
+                    got_packet = true;
+                }
+            }
+            nRF_unlock();
+
+            if (! got_packet)
+            {
+                vTaskDelay(1); // bez tego IDLE nie dostaje czasu i odpala sie task watchdog
                 continue;
             }
-
-            Nrf24_getData(&dev, (uint8_t*)&packet_received);
 
             xStreamBufferSend(
                 nRF_receive_to_de_crypto_stream,

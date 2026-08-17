@@ -244,12 +244,22 @@ void TASK_cont_mic_stream(void *arg)
 
     while (1)
     {
-        if (adc_continuous_read(mic_adc_handle_cont, raw, sizeof(raw), &got, portMAX_DELAY) == ESP_OK)
+        blockWaitForTransmitMode();
+
+        // ADC zbieral probki takze w trybie RECEIVE - wyrzucamy je, zeby nie nadac starego dzwieku
+        adc_continuous_flush_pool(mic_adc_handle_cont);
+
+        while (isTransmitModeStillActive())
         {
+            if (adc_continuous_read(mic_adc_handle_cont, raw, sizeof(raw), &got, MIC_CONT_READ_TIMEOUT_MS) != ESP_OK)
+            {
+                continue;
+            }
+
             size_t n = process_recorded_audio(raw, got, pcm);
             if (n > 0)
             {
-                xStreamBufferSend(mic_to_en_crypto_stream, pcm, n * sizeof(int16_t), portMAX_DELAY);
+                xStreamBufferSend(mic_to_en_crypto_stream, pcm, n * sizeof(int16_t), common_timeout);
             }
         }
     }

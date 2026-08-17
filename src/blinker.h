@@ -17,7 +17,7 @@ typedef struct
 gpio_output_t;
 
 gpio_output_t init_gpio_output(uint8_t pin, bool state);
-void gpio_output_set(gpio_output_t *wrapper, bool on);
+void gpio_output_set(gpio_output_t *wrapper, bool state);
 void gpio_output_toggle(gpio_output_t *wrapper);
 void gpio_output_blink(gpio_output_t *wrapper, uint32_t n, uint32_t time_on_ms, uint32_t time_off_ms);
 

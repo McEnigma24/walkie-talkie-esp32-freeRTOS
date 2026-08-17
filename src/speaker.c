@@ -31,7 +31,8 @@ static int16_t speaker_scale_sample(int16_t sample)
 
 esp_err_t init_speaker(void)
 {
-    i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
+    // I2S0 jest na ESP32 zajete przez ADC continuous (mikrofon), wiec bierzemy I2S1 wprost
+    i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_1, I2S_ROLE_MASTER);
     chan_cfg.dma_desc_num = 8;      // wiecej buforow = wiekszy zapas, ale wieksza latencja
     chan_cfg.dma_frame_num = 256;   // wiekszy bufor = mniej wybudzen, ale wieksza latencja
     chan_cfg.auto_clear = true;     // przy underrunie graj cisze zamiast powtarzac ostatni bufor

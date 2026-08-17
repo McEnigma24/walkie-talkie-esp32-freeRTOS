@@ -68,12 +68,49 @@ void blockWaitForTransmitMode(void)
     blockWaitForCHOSENmode( EVENT_TRANSMIT );
 }
 
+static EventBits_t oppositeMode(EventBits_t choice)
+{
+    return (choice == EVENT_TRANSMIT) ? EVENT_RECEIVE : EVENT_TRANSMIT;
+}
+
+static void switchToCHOSENmode(EventBits_t choice)
+{
+    // Kasujemy przed ustawieniem, zeby zaden task nie zobaczyl obu bitow naraz
+    xEventGroupClearBits(xCreatedEventGroup, oppositeMode(choice));
+    xEventGroupSetBits(xCreatedEventGroup, choice);
+}
+
+void switchToTransmitMode(void)
+{
+    switchToCHOSENmode( EVENT_TRANSMIT );
+}
+
+void switchToReceiveMode(void)
+{
+    switchToCHOSENmode( EVENT_RECEIVE );
+}
+
+void toggleMode(void)
+{
+    if (isTransmitModeStillActive())
+    {
+        switchToReceiveMode();
+        return;
+    }
+
+    switchToTransmitMode();
+}
+
 static void switchToCHOSENmodeFromISR(EventBits_t choice) // ISR
 {
     BaseType_t xHigherPriorityTaskWoken, xResult;
 
     /* xHigherPriorityTaskWoken must be initialised to pdFALSE. */
     xHigherPriorityTaskWoken = pdFALSE;
+
+    // Uwaga: z ISR kasowanie jest odroczone do timer daemona, wiec przez chwile
+    // moga byc widoczne oba bity. W kontekscie taska uzywaj switchToCHOSENmode().
+    (void)xEventGroupClearBitsFromISR(xCreatedEventGroup, oppositeMode(choice));
 
     xResult = xEventGroupSetBitsFromISR(
                                 xCreatedEventGroup,

@@ -9,6 +9,7 @@
 #include "freertos/semphr.h"
 
 #include "blinker.h"
+#include "event_group.h"
 
 static SemaphoreHandle_t ptt_sem;
 static atomic_uchar ptt_transmitting = 0;
@@ -33,7 +34,7 @@ static void IRAM_ATTR ptt_gpio_isr(void *arg)
 void ptt_force_stop(void)
 {
     atomic_store(&ptt_transmitting, 0);
-    gpio_output_set(&blinker, 0);
+    gpio_output_set(&blinker, OFF);
 }
 
 static void ptt_task(void *arg)
@@ -71,7 +72,8 @@ static void ptt_task(void *arg)
             }
             else if (click_armed)
             {
-                atomic_fetch_xor(&ptt_transmitting, 1);
+                atomic_fetch_xor(&ptt_transmitting, 1); // this is XOR -> it toggles
+                toggleMode();
                 gpio_output_toggle(&blinker);
 
                 click_armed = false;
@@ -112,7 +114,7 @@ esp_err_t init_ptt(void)
         return ESP_ERR_NO_MEM;
     }
 
-    gpio_output_set(&blinker, 0);
+    gpio_output_set(&blinker, OFF);
 
     return ESP_OK;
 }
