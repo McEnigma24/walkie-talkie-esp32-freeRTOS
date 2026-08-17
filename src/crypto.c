@@ -260,51 +260,48 @@ void TASK_crypto_en_crypto(void *arg)
     (void)arg;
     uint8_t RAW_AUDIO_INPUT[CRYPTO_PAYLOAD_BYTE_SIZE];
     radio_packet_t packet_to_fill;
-
+    size_t filled = 0;
 
     while(1)
     {
         blockWaitForTransmitMode();
 
+        filled = 0; // nowa sesja - nie doklejamy ogona z poprzedniej
+
         while(isTransmitModeStillActive())
         {
-            size_t got = xStreamBufferReceive(
+            // Mikrofon dostarcza ramki po 128 B, a pakiet ma 30 B. Reszty z dzielenia
+            // nie wolno wyrzucic - dokladamy ja do nastepnego pakietu, inaczej co ramke
+            // gubimy 8 B audio (czyli 6% dzwieku).
+            filled += xStreamBufferReceive(
                 mic_to_en_crypto_stream,
-                RAW_AUDIO_INPUT,
-                CRYPTO_PAYLOAD_BYTE_SIZE,
+                RAW_AUDIO_INPUT + filled,
+                CRYPTO_PAYLOAD_BYTE_SIZE - filled,
                 common_timeout
             );
 
-            if(got > 0)
+            if(filled < CRYPTO_PAYLOAD_BYTE_SIZE)
             {
-                // ESP_LOGE(TAG, "2. crypto got something to encode");
-                // we got something //
-
-                if(got != CRYPTO_PAYLOAD_BYTE_SIZE)
-                {
-                    ESP_LOGE(TAG, "Received from StreamBuffer with incorrect size -> %u != 30", (unsigned)got);
-                    continue;
-                }
-
-                if(! en_crypto_audio_packet(RAW_AUDIO_INPUT, &packet_to_fill))
-                {
-                    ESP_LOGE(TAG, "Failed to encode data");
-                    continue;
-                }
-
-                // now, we have a encrypted packet -> packet_to_fill
-                //
-                // we send its content to another stream buffer to be sent by nRF
-
-                xStreamBufferSend(
-                    en_crypto_to_nRF_transmit_stream,
-                    &packet_to_fill,
-                    sizeof(packet_to_fill),
-                    common_timeout
-                );
-
-                // ESP_LOGE(TAG, "3. sending to nRF for transmission");
+                continue;
             }
+            filled = 0;
+
+            if(! en_crypto_audio_packet(RAW_AUDIO_INPUT, &packet_to_fill))
+            {
+                ESP_LOGE(TAG, "Failed to encode data");
+                continue;
+            }
+
+            // now, we have a encrypted packet -> packet_to_fill
+            //
+            // we send its content to another stream buffer to be sent by nRF
+
+            xStreamBufferSend(
+                en_crypto_to_nRF_transmit_stream,
+                &packet_to_fill,
+                sizeof(packet_to_fill),
+                common_timeout
+            );
         }
     }
 }

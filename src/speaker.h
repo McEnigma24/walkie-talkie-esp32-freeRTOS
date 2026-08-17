@@ -17,6 +17,9 @@
 #define RECORD_SAMPLES  (SAMPLE_RATE * RECORD_SEC)
 #define PLAYBACK_VOLUME_PERCENT  30
 #define SILENCE_FLUSH_BUFFERS    4
+// Zapas ciszy w DMA na starcie odtwarzania. Jeden bufor to BUFFER_SAMPLES probek,
+// czyli przy 8 kHz 32 ms - to wprost opoznienie, ktore dokladasz do lacza.
+#define SPEAKER_PREBUFFER_BUFFERS 3
 
 esp_err_t init_speaker(void);
 esp_err_t speaker_stream_begin(void);

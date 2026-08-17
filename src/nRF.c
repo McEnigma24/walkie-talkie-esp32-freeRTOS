@@ -5,12 +5,16 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "esp_log.h"
+#include "esp_timer.h"
 
 #include "crypto.h"
 #include "streams.h"
 #include "event_group.h"
 
 _Static_assert(sizeof(radio_packet_t) == nRF_PAYLOAD_BYTE_SIZE, "radio_packet_t musi miec dokladnie nRF_PAYLOAD_BYTE_SIZE bajtow");
+
+static const char *NRF_TAG = "NRF_LINK";
 
 NRF24_t dev;
 
@@ -107,6 +111,50 @@ void TASK_nRF_send(void *arg)
     }
 }
 
+// --- diagnostyka strat pakietow (do wyrzucenia po dostrojeniu lacza) ---
+static void nRF_report_losses(uint16_t sequence_number)
+{
+    static int64_t next_report_us = 0;
+    static uint16_t last_SN = 0;
+    static bool have_last_SN = false;
+    static uint32_t stat_received = 0;
+    static uint32_t stat_lost = 0;
+
+    if (have_last_SN)
+    {
+        // Arytmetyka na uint16_t sama zawija sie razem z licznikiem nadajnika
+        uint16_t gap = (uint16_t)(sequence_number - last_SN - 1);
+
+        // Duza dziura to raczej restart nadajnika niz utrata - nie zaklamujmy statystyki
+        if (gap < 1000)
+        {
+            stat_lost += gap;
+        }
+    }
+    last_SN = sequence_number;
+    have_last_SN = true;
+    stat_received++;
+
+    int64_t now_us = esp_timer_get_time();
+    if (now_us < next_report_us)
+    {
+        return;
+    }
+    next_report_us = now_us + 1000000;
+
+    uint32_t total = stat_received + stat_lost;
+    ESP_LOGI(
+        NRF_TAG,
+        "odbior: %lu pakietow/s (cel 533), zgubione %lu = %lu%%",
+        (unsigned long)stat_received,
+        (unsigned long)stat_lost,
+        (unsigned long)(total > 0 ? (stat_lost * 100 / total) : 0)
+    );
+
+    stat_received = 0;
+    stat_lost = 0;
+}
+
 void TASK_nRF_receive(void *arg)
 {
     (void)arg;
@@ -148,6 +196,8 @@ void TASK_nRF_receive(void *arg)
                 vTaskDelay(1);
                 continue;
             }
+
+            nRF_report_losses(packet_received.sequence_number);
 
             xStreamBufferSend(
                 nRF_receive_to_de_crypto_stream,

@@ -66,17 +66,12 @@ esp_err_t init_speaker(void)
     return ESP_OK;
 }
 
-esp_err_t speaker_stream_begin(void)
-{
-    return i2s_channel_enable(tx_handle);
-}
-
-static esp_err_t speaker_fill_buffers_with_zeros(void)
+static esp_err_t speaker_write_silence(int buffers)
 {
     int16_t silence[BUFFER_SAMPLES * 2] = {0};
     size_t bytes_written = 0;
 
-    for (int i = 0; i < SILENCE_FLUSH_BUFFERS; i++)
+    for (int i = 0; i < buffers; i++)
     {
         ESP_RETURN_ON_ERROR(
             i2s_channel_write(
@@ -94,9 +89,19 @@ static esp_err_t speaker_fill_buffers_with_zeros(void)
     return ESP_OK;
 }
 
+esp_err_t speaker_stream_begin(void)
+{
+    ESP_RETURN_ON_ERROR(i2s_channel_enable(tx_handle), "I2S", "enable");
+
+    // Nadajnik i odbiornik taktuja sie wlasnymi kwarcami i pakiety przychodza
+    // nierowno, wiec nabijamy zapas ciszy w DMA. Bez niego kazde spoznienie
+    // dostawy natychmiast slychac jako dziure w dzwieku.
+    return speaker_write_silence(SPEAKER_PREBUFFER_BUFFERS);
+}
+
 esp_err_t speaker_stream_end(void)
 {
-    ESP_RETURN_ON_ERROR(speaker_fill_buffers_with_zeros(), "I2S", "disable");
+    ESP_RETURN_ON_ERROR(speaker_write_silence(SILENCE_FLUSH_BUFFERS), "I2S", "disable");
     return i2s_channel_disable(tx_handle);
 }
 

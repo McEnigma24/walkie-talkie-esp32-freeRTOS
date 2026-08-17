@@ -9,6 +9,9 @@
 #include "speaker.h"
 #include "streams.h"
 #include "event_group.h"
+#include "esp_log.h"
+
+static const char *TAG = "MIC";
 
 static adc_oneshot_unit_handle_t mic_adc_handle;
 static float mic_baseline = 0.0f;
@@ -154,6 +157,7 @@ int mic_get_offset(void)
 
 static adc_continuous_handle_t mic_adc_handle_cont;
 static float mic_baseline_cont = 0.0f;
+static bool mic_baseline_primed = false;
 
 #define MIC_CONT_ADC_FREQ_HZ  ( SAMPLE_RATE * MIC_CONT_DECIMATION )
 
@@ -195,13 +199,39 @@ esp_err_t init_mic_cont(void)
         "adc config"
     );
 
-    ESP_RETURN_ON_ERROR(
-        adc_continuous_start(mic_adc_handle_cont),
-        "MIC",
-        "adc start"
-    );
-
+    // ADC startujemy dopiero w trybie TRANSMIT - patrz TASK_cont_mic_stream
     return ESP_OK;
+}
+
+// --- diagnostyka poziomu sygnalu (do wyrzucenia po dostrojeniu wzmocnienia) ---
+static int32_t stat_peak_delta = 0;   // szczyt PRZED pomnozeniem przez MIC_GAIN
+static uint32_t stat_clipped = 0;
+static uint32_t stat_samples = 0;
+
+static void mic_report_levels(void)
+{
+    static int64_t next_report_us = 0;
+    int64_t now_us = esp_timer_get_time();
+
+    if (now_us < next_report_us)
+    {
+        return;
+    }
+    next_report_us = now_us + 1000000;
+
+    if (stat_samples > 0)
+    {
+        ESP_LOGI(TAG, "poziom: szczyt %ld (x%d -> %ld), przester %lu/%lu probek",
+                 (long)stat_peak_delta,
+                 MIC_GAIN,
+                 (long)(stat_peak_delta * MIC_GAIN),
+                 (unsigned long)stat_clipped,
+                 (unsigned long)stat_samples);
+    }
+
+    stat_peak_delta = 0;
+    stat_clipped = 0;
+    stat_samples = 0;
 }
 
 static size_t process_recorded_audio(uint8_t *raw, uint32_t got, int16_t *out)
@@ -219,6 +249,15 @@ static size_t process_recorded_audio(uint8_t *raw, uint32_t got, int16_t *out)
         }
 
         int sample = p->type1.data;
+
+        if (! mic_baseline_primed)
+        {
+            mic_baseline_cont = (float)sample;
+            mic_baseline_primed = true;
+            acc = 0;
+            acc_count = 0;
+        }
+
         mic_baseline_cont = mic_baseline_cont * 0.995f + (float)sample * 0.005f;
         acc += sample - (int)mic_baseline_cont;
 
@@ -227,7 +266,21 @@ static size_t process_recorded_audio(uint8_t *raw, uint32_t got, int16_t *out)
             continue;
         }
 
-        out[n++] = mic_clamp16((acc / MIC_CONT_DECIMATION) * MIC_GAIN);
+        int32_t delta = acc / MIC_CONT_DECIMATION;
+        int32_t scaled = delta * MIC_GAIN;
+
+        int32_t magnitude = delta < 0 ? -delta : delta;
+        if (magnitude > stat_peak_delta)
+        {
+            stat_peak_delta = magnitude;
+        }
+        if (scaled > 32767 || scaled < -32768)
+        {
+            stat_clipped++;
+        }
+        stat_samples++;
+
+        out[n++] = mic_clamp16(scaled);
         acc = 0;
         acc_count = 0;
     }
@@ -246,8 +299,12 @@ void TASK_cont_mic_stream(void *arg)
     {
         blockWaitForTransmitMode();
 
-        // ADC zbieral probki takze w trybie RECEIVE - wyrzucamy je, zeby nie nadac starego dzwieku
+        // Filtr DC startuje od wartosci z poprzedniej sesji, wiec pierwsze probki
+        // mialyby ogromne delta i wchodzilyby w przester - primujemy go pierwsza probka
+        mic_baseline_primed = false;
+
         adc_continuous_flush_pool(mic_adc_handle_cont);
+        adc_continuous_start(mic_adc_handle_cont);
 
         while (isTransmitModeStillActive())
         {
@@ -261,6 +318,10 @@ void TASK_cont_mic_stream(void *arg)
             {
                 xStreamBufferSend(mic_to_en_crypto_stream, pcm, n * sizeof(int16_t), common_timeout);
             }
+
+            mic_report_levels();
         }
+
+        adc_continuous_stop(mic_adc_handle_cont);
     }
 }
