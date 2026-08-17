@@ -155,7 +155,7 @@ int mic_get_offset(void)
 static adc_continuous_handle_t mic_adc_handle_cont;
 static float mic_baseline_cont = 0.0f;
 
-esp_err_t mic_init_cont(void)
+esp_err_t init_mic_cont(void)
 {
     adc_continuous_handle_cfg_t handle_cfg = {
         .max_store_buf_size = MIC_CONT_STORE_SIZE,

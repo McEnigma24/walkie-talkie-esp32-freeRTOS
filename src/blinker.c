@@ -4,7 +4,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-gpio_output_t gpio_output_init(uint8_t pin, bool state)
+gpio_output_t init_gpio_output(uint8_t pin, bool state)
 {
     gpio_output_t wrapper = {
         .pin = pin,

@@ -40,56 +40,40 @@ void app_main(void)
 {
     printf("Walkie-talkie %d Hz - PTT na GPIO%d\n", SAMPLE_RATE, PTT_GPIO);
 
-    gpio_output_t blinker = gpio_output_init(BLINK_GPIO, true);
-    gpio_output_blink(&blinker, 3, 500, 500);
+    // INITS //
+    {
+        blinker = init_gpio_output(BLINK_GPIO, true);
+        gpio_output_blink(&blinker, 3, 500, 500);
 
-    ESP_ERROR_CHECK(init_event_group());
+            ESP_ERROR_CHECK(init_ptt());
 
-    ESP_ERROR_CHECK(speaker_init());
-    ESP_ERROR_CHECK(nRF_init());
-    ESP_ERROR_CHECK(crypto_init());
+            ESP_ERROR_CHECK(init_event_group());
+            ESP_ERROR_CHECK(init_mic_to_en_crypto_stream());
+            ESP_ERROR_CHECK(init_en_crypto_to_nRF_transmit_stream());
+            ESP_ERROR_CHECK(init_nRF_receive_to_de_crypto_stream());
+            ESP_ERROR_CHECK(init_de_crypto_to_speaker_stream());
 
-    #ifdef TRANSMITTER
-        // ESP_ERROR_CHECK(mic_init());
-        // ESP_ERROR_CHECK(mic_init_cont());
-        // ESP_ERROR_CHECK(mic_to_en_crypto_stream_init());
+            ESP_ERROR_CHECK(init_mic_cont());
+            ESP_ERROR_CHECK(init_speaker());
 
-        ESP_ERROR_CHECK(ptt_init());
+            ESP_ERROR_CHECK(init_nRF());
+            ESP_ERROR_CHECK(init_crypto());
 
-        uint8_t tmp_single_packet_buffer[32] = {
-            1, 2, 3, 4, 5, 6, 7, 8,
-            1, 2, 3, 4, 5, 6, 7, 8,
-            1, 2, 3, 4, 5, 6, 7, 8,
-            1, 2, 3, 4, 5, 6, 7, 8
-        };
-    #endif
+        gpio_output_blink(&blinker, 3, 500, 500);
+    }
 
-    #ifdef RECEIVER
-        // ESP_ERROR_CHECK(speaker_stream_begin());
-        // int mic_buffer_idx = 0;
-        uint8_t tmp_single_packet_buffer[32] = { 0 };
-    #endif
+    // TASKS //
+    {
+        xTaskCreate(TASK_cont_mic_stream,   "mic",          4096, NULL, 5, NULL);
+        xTaskCreate(TASK_crypto_en_crypto,  "en_crypto",    4096, NULL, 5, NULL);
+        xTaskCreate(TASK_nRF_send,          "nRF_send",     4096, NULL, 5, NULL);
 
-    int64_t TPUT_last_tick_before_full_1s = esp_timer_get_time();
-    radio_packet_t tmp_single_encypted_packet;
-
-    gpio_output_blink(&blinker, 3, 500, 500);
+        xTaskCreate(TASK_nRF_receive,       "nRF_receive",  4096, NULL, 5, NULL);
+        xTaskCreate(TASK_crypto_de_crypto,  "de_crypto",    4096, NULL, 5, NULL);
+        xTaskCreate(TASK_speaker,           "speaker",      4096, NULL, 5, NULL);
+    }
 
     /*
-        #define BENCHMARK(x, numbers) \
-        { \
-        \
-        \
-        }
-
-        int64_t next_us = esp_timer_get_time();
-        int64_t next_us = esp_timer_get_time();
-        int64_t next_us = esp_timer_get_time();
-    */
-
-    // xTaskCreate(TASK_cont_mic_stream, "mic", 4096, NULL, 5, NULL);
-    // xTaskCreate(nRF_stream_task,      "nrf", 4096, NULL, 5, NULL);
-
     while (1)
     {
         #ifdef TRANSMITTER
@@ -157,6 +141,5 @@ void app_main(void)
         }
         #endif
     }
-
-    // ESP_ERROR_CHECK(speaker_stream_end());
+    */
 }

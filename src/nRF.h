@@ -16,7 +16,7 @@
 
 extern NRF24_t dev;
 
-esp_err_t nRF_init(void);
+esp_err_t init_nRF(void);
 void nRF_send_data(uint8_t* data, uint32_t byte_length);
 
 

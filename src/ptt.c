@@ -8,6 +8,8 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 
+#include "blinker.h"
+
 static SemaphoreHandle_t ptt_sem;
 static atomic_uchar ptt_transmitting = 0;
 
@@ -31,6 +33,7 @@ static void IRAM_ATTR ptt_gpio_isr(void *arg)
 void ptt_force_stop(void)
 {
     atomic_store(&ptt_transmitting, 0);
+    gpio_output_set(&blinker, 0);
 }
 
 static void ptt_task(void *arg)
@@ -69,6 +72,8 @@ static void ptt_task(void *arg)
             else if (click_armed)
             {
                 atomic_fetch_xor(&ptt_transmitting, 1);
+                gpio_output_set(&blinker, 1);
+
                 click_armed = false;
             }
 
@@ -77,7 +82,7 @@ static void ptt_task(void *arg)
     }
 }
 
-esp_err_t ptt_init(void)
+esp_err_t init_ptt(void)
 {
     ptt_sem = xSemaphoreCreateBinary();
     if (ptt_sem == NULL)
@@ -106,6 +111,8 @@ esp_err_t ptt_init(void)
     {
         return ESP_ERR_NO_MEM;
     }
+
+    gpio_output_set(&blinker, 0);
 
     return ESP_OK;
 }

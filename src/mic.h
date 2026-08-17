@@ -24,7 +24,7 @@ esp_err_t mic_read_samples(int16_t *buffer, size_t num_samples);
 int mic_measure_level(void);
 int mic_get_offset(void);
 
-esp_err_t mic_init_cont(void);
+esp_err_t init_mic_cont(void);
 void TASK_cont_mic_stream(void *arg);
 
 #endif

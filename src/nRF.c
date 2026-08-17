@@ -14,7 +14,7 @@ NRF24_t dev;
     } \
 }
 
-esp_err_t nRF_init(void)
+esp_err_t init_nRF(void)
 {
     Nrf24_init(&dev);                                  // zwraca void
     #ifdef STREAM_MODE

@@ -84,7 +84,7 @@ static void sync_SN(uint16_t packet_SN)
 
 // Zwraca esp_err_t, bo main.c opakowuje to w ESP_ERROR_CHECK - dla tego makra
 // sukcesem jest wylacznie ESP_OK (0), a nie "prawda".
-static esp_err_t crypto_init(void)
+static esp_err_t init_crypto(void)
 {
     // Uruchamia backend PSA (RNG, sterowniki, magazyn kluczy).
     psa_status_t status = psa_crypto_init();
@@ -136,7 +136,7 @@ static bool en_crypto_audio_packet(uint8_t* IN_raw_audio, radio_packet_t* OUT_pa
     psa_status_t status;
     if (aes_key_id == 0)
     {
-        ESP_LOGE(TAG, "Brak klucza - najpierw wywolaj crypto_init()");
+        ESP_LOGE(TAG, "Brak klucza - najpierw wywolaj init_crypto()");
         return false;
     }
     if (nullptr == IN_raw_audio || nullptr == OUT_packet_to_send)
@@ -200,7 +200,7 @@ static bool decode_radio_packet(radio_packet_t* IN_received_packet, uint8_t* OUT
     psa_status_t status;
     if (aes_key_id == 0)
     {
-        ESP_LOGE(TAG, "Brak klucza - najpierw wywolaj crypto_init()");
+        ESP_LOGE(TAG, "Brak klucza - najpierw wywolaj init_crypto()");
         return false;
     }
     if (nullptr == IN_received_packet || nullptr == OUT_raw_audio)
@@ -264,7 +264,7 @@ static bool decode_radio_packet(radio_packet_t* IN_received_packet, uint8_t* OUT
 
 // MIC -> EN_CRYPTO -> nRF Transmit //
 
-static void TASK_crypto_en_crypto()
+static void TASK_crypto_en_crypto(void)
 {
     (void)arg;
     uint8_t RAW_AUDIO_INPUT[CRYPTO_PAYLOAD_BYTE_SIZE];
@@ -319,7 +319,7 @@ static void TASK_crypto_en_crypto()
 
 // nRF Receive -> DE_CRYPTO -> SPEAKER //
 
-static void TASK_crypto_decode()
+static void TASK_crypto_de_crypto(void)
 {
     (void)arg;
     uint8_t RAW_AUDIO_OUTPUT[CRYPTO_PAYLOAD_BYTE_SIZE];

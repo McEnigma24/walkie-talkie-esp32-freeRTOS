@@ -22,7 +22,7 @@ static int16_t speaker_scale_sample(int16_t sample)
     return (int16_t)scaled;
 }
 
-esp_err_t speaker_init(void)
+esp_err_t init_speaker(void)
 {
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
     chan_cfg.dma_desc_num = 8;      // wiecej buforow = wiekszy zapas, ale wieksza latencja
@@ -34,7 +34,7 @@ esp_err_t speaker_init(void)
 
 
     i2s_std_config_t std_cfg = {
-        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(SAMPLE_RATE),
+        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(8'000),
         .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
             I2S_DATA_BIT_WIDTH_16BIT,
             I2S_SLOT_MODE_STEREO
@@ -203,3 +203,43 @@ void play_tone(void)
 
     ESP_ERROR_CHECK(speaker_stream_end());
 }
+
+static void TASK_speaker(void)
+{
+    (void)arg;
+    uint8_t RAW_AUDIO_OUTPUT[CRYPTO_PAYLOAD_BYTE_SIZE];
+
+    while(1)
+    {
+        blockWaitForReceiveMode(); // blocking
+
+        speaker_stream_begin(); // speaker ON
+
+        while(isReceiveModeStillActive())
+        {
+            size_t got = xStreamBufferReceive(
+                de_crypto_to_speaker_stream,
+                RAW_AUDIO_OUTPUT,
+                CRYPTO_PAYLOAD_BYTE_SIZE,
+                common_timeout
+            );
+
+            if(got > 0)
+            {
+                // we got something //
+
+                if(got != CRYPTO_PAYLOAD_BYTE_SIZE)
+                {
+                    ESP_LOGE(TAG, "Received from StreamBuffer with incorrect size -> %d != 30", got);
+                    continue;
+                }
+
+                speaker_stream_write((uint8_t*)RAW_AUDIO_OUTPUT, 15);
+            }
+        }
+
+        speaker_stream_end(); // speaker OFF
+    }
+}
+
+

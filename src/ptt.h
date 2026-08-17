@@ -37,7 +37,7 @@
  * UWAGA: GPIO17 pozostaje wolny (zarezerwowany pod NRF24 CE).
  */
 
-esp_err_t ptt_init(void);
+esp_err_t init_ptt(void);
 bool ptt_is_transmitting(void);
 void ptt_force_stop(void);
 

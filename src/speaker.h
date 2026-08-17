@@ -18,11 +18,13 @@
 #define PLAYBACK_VOLUME_PERCENT  30
 #define SILENCE_FLUSH_BUFFERS    4
 
-esp_err_t speaker_init(void);
+esp_err_t init_speaker(void);
 esp_err_t speaker_stream_begin(void);
 esp_err_t speaker_stream_end(void);
 esp_err_t speaker_stream_write(const int16_t *mono, size_t num_samples);
 esp_err_t speaker_play(const int16_t *mono, size_t buffer_bytes);
 void play_tone(void);
+
+static void TASK_speaker(void);
 
 #endif
